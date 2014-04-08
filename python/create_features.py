@@ -89,6 +89,15 @@ def make_predictors(df, do_train=True):
     for gs in last_df['group_size']:
         predictors['is_group_size_' + str(gs)] = last_df['group_size'] == gs
 
+    predictors['is_Mon'] = last_df['day'] == 0
+    predictors['is_Tue'] = last_df['day'] == 1
+    predictors['is_Wed'] = last_df['day'] == 2
+    predictors['is_Thu'] = last_df['day'] == 3
+    predictors['is_Fri'] = last_df['day'] == 4
+    predictors['is_Sat'] = last_df['day'] == 5
+    predictors['is_Sun'] = last_df['day'] == 6
+
+
     # create additional predictors based on customer shopping history
     predictors['n_shopping'] = last_df['shopping_pt']  # number of plan customer looked at before buying
     predictors['first_plan'] = 0  # label of plan customer first looked at
@@ -97,11 +106,28 @@ def make_predictors(df, do_train=True):
     predictors['most_common_plan'] = 0  # label of plan customer most frequently looked at
     for category in ['A', 'B', 'C', 'D', 'E', 'F', 'G']:
         for label in set(last_df[category]):
-            # fraction of time customer looked at this category label (e.g., A = {0, 1, 2}, etc.)
+            # fraction of times customer looked at this category label (e.g., A = {0, 1, 2}, etc.)
             predictors['fraction_' + category + '_' + str(label)] = 0.0
 
     rmap = make_response_map(df)
-    for customer in customer_ids:
+    categories = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+    print 'Constructing features for customer number'
+    for i, customer in enumerate(customer_ids):
+        print i+1, '...'
+        this_df = df.ix[customer]
+        plans = []
+        for shopping_pt in this_df.index[:-1]:
+            plan_id = ''
+            for category in categories:
+                plan_id += str(this_df.ix[shopping_pt][category])
+            plans.append(rmap[plan_id])
+        predictors.set_value(customer, 'first_plan', plans[0])
+        predictors.set_value(customer, 'last_plan', plans[-1])
+        predictors.set_value(customer, 'fraction_last_plan', plans.count(plans[-1]) / float(len(plans)))
+        pcounts = []
+        unique_plans = np.unique(list)
+        pcounts = [plans.count(p) for p in unique_plans]
+        predictors.set_value(customer, 'most_common_plan', unique_plans[pcounts.argmax()])
 
 
     # compress data types

@@ -31,7 +31,7 @@ def make_response_map():
 
 def make_static_predictors(df):
     # ordinal and continous predictors
-    cols = ['car_age', 'risk_factor', 'age_oldest', 'age_youngest', 'duration_previous', 'cost', 'homeowner',
+    cols = ['car_age', 'risk_factor', 'age_oldest', 'age_youngest', 'duration_previous', 'homeowner',
             'married_couple']
 
     predictors = df[cols]
@@ -85,6 +85,8 @@ def make_static_predictors(df):
 def add_dynamic_predictors(df, predictors, last_shopping_pt):
     """ Create additional predictors based on customer shopping history. """
     customer_ids = df.index.get_level_values(0).unique()
+    predictors['first_price'] = 0
+    predictors['last_price'] = 0
     predictors['n_shopping'] = 0  # number of plan customer looked at before buying
     predictors['first_plan'] = 0  # label of plan customer first looked at
     predictors['last_plan'] = 0  # label of last plan customer looked at before purchasing
@@ -121,6 +123,8 @@ def add_dynamic_predictors(df, predictors, last_shopping_pt):
 
             plans.append(rmap[plan_id])
 
+        predictors.set_value(customer, 'first_price', this_df.ix[1]['cost'])
+        predictors.set_value(customer, 'last_price', this_df.ix[last_shopping_pt[i]]['cost'])
         predictors.set_value(customer, 'n_shopping', last_shopping_pt[i])
         predictors.set_value(customer, 'first_plan', plans[0])
         predictors.set_value(customer, 'last_plan', plans[-1])

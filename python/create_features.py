@@ -29,76 +29,65 @@ def make_response_map():
     return response_map
 
 
-def make_static_predictors(df):
-    # ordinal and continous predictors
-    cols = ['car_age', 'risk_factor', 'age_oldest', 'age_youngest', 'duration_previous', 'homeowner',
-            'married_couple']
-
-    predictors = df[cols]
-
+def add_static_predictors(df):
     # rename to use the prefix "is_" for consistency among binary-valued predictors
-    predictors.rename(columns={'homeowner': 'is_homeowner', 'married_couple': 'is_married_couple'}, inplace=True)
+    df.rename(columns={'homeowner': 'is_homeowner', 'married_couple': 'is_married_couple'}, inplace=True)
 
     # convert time to continuous values
     print 'Converting time values...'
-    predictors['time'] = 0.0
-    for customer in predictors.index:
-        hour, minute = df.ix[customer]['time'].split(':')
+
+    def time_to_float(tstr):
+        hour, minute = tstr.split(':')
         tvalue = float(hour) + float(minute) / 60.0
-        predictors.set_value(customer, 'time', tvalue)
+        return tvalue
+
+    df['time'] = df['time'].map(time_to_float)
+
+    print 'Calculating remaining static features.'
 
     # convert car_value from letters to numbers
-    predictors['car_value'] = 0
-    predictors['car_value'][df['car_value'] == 'a'] = 1
-    predictors['car_value'][df['car_value'] == 'b'] = 2
-    predictors['car_value'][df['car_value'] == 'c'] = 3
-    predictors['car_value'][df['car_value'] == 'd'] = 4
-    predictors['car_value'][df['car_value'] == 'f'] = 5
-    predictors['car_value'][df['car_value'] == 'g'] = 6
-    predictors['car_value'][df['car_value'] == 'h'] = 7
-    predictors['car_value'][df['car_value'] == 'i'] = 8
+    uvals = np.sort(df['car_value'].unique())
+    carv_mapping = {cv: v for cv, v in zip(uvals, range(1, len(uvals)+1))}
+    df['car_value'] = df['car_value'].map(carv_mapping)
 
     # turn non-binary categorical predictors into binary-valued predictors
     for state in df['state'].unique():
-        predictors['is_' + state] = df['state'] == state
+        df['is_' + state] = df['state'] == state
 
-    predictors['is_C_previous_nan'] = df['C_previous'].isnull()
-    predictors['is_C_previous_1'] = df['C_previous'] == 1
-    predictors['is_C_previous_2'] = df['C_previous'] == 2
-    predictors['is_C_previous_3'] = df['C_previous'] == 3
-    predictors['is_C_previous_4'] = df['C_previous'] == 4
+    df['is_C_previous_nan'] = df['C_previous'].isnull()
+    df['is_C_previous_1'] = df['C_previous'] == 1
+    df['is_C_previous_2'] = df['C_previous'] == 2
+    df['is_C_previous_3'] = df['C_previous'] == 3
+    df['is_C_previous_4'] = df['C_previous'] == 4
 
     for gs in df['group_size']:
-        predictors['is_group_size_' + str(gs)] = df['group_size'] == gs
+        df['is_group_size_' + str(gs)] = df['group_size'] == gs
 
-    predictors['is_Mon'] = df['day'] == 0
-    predictors['is_Tue'] = df['day'] == 1
-    predictors['is_Wed'] = df['day'] == 2
-    predictors['is_Thu'] = df['day'] == 3
-    predictors['is_Fri'] = df['day'] == 4
-    predictors['is_Sat'] = df['day'] == 5
-    predictors['is_Sun'] = df['day'] == 6
+    df['is_Mon'] = df['day'] == 0
+    df['is_Tue'] = df['day'] == 1
+    df['is_Wed'] = df['day'] == 2
+    df['is_Thu'] = df['day'] == 3
+    df['is_Fri'] = df['day'] == 4
+    df['is_Sat'] = df['day'] == 5
+    df['is_Sun'] = df['day'] == 6
 
-    return predictors
+    return df
 
 
-def add_dynamic_predictors(df, predictors, last_shopping_pt):
+def add_dynamic_predictors(df, last_shopping_pt):
     """ Create additional predictors based on customer shopping history. """
     customer_ids = df.index.get_level_values(0).unique()
-    predictors['first_price'] = 0
-    predictors['last_price'] = 0
-    predictors['n_shopping'] = 0  # number of plan customer looked at before buying
-    predictors['first_plan'] = 0  # label of plan customer first looked at
-    predictors['last_plan'] = 0  # label of last plan customer looked at before purchasing
-    predictors['fraction_last_plan'] = 0.0  # fraction of time customer looked at the last plan
-    predictors['most_common_plan'] = 0  # label of plan customer most frequently looked at
+    df['planID'] = 0  # unique identifier for plan customer looked at
+    df['fraction_last_plan'] = 0.0  # fraction of time customer looked at the last plan
+    df['most_common_plan'] = 0  # label of plan customer most frequently looked at
     cat_values = {'A': (0, 1, 2), 'B': (0, 1), 'C': (1, 2, 3, 4), 'D': (1, 2, 3), 'E': (0, 1), 'F': (0, 1, 2, 3),
                   'G': (1, 2, 3, 4)}
 
     for category in cat_values.keys():
         for label in cat_values[category]:
             # fraction of times customer looked at this category label (e.g., A = {0, 1, 2}, etc.)
-            predictors['fraction_' + category + str(label)] = 0.0
+            df['fraction_' + category + str(label)] = 0.0
+            df['fraction_changed_' + category] = 0.0
 
     rmap = make_response_map()
 
@@ -108,9 +97,11 @@ def add_dynamic_predictors(df, predictors, last_shopping_pt):
         this_df = df.ix[customer]
         plans = []
         category_count = dict()
+        category_change_count = dict()
         for category in cat_values.keys():
+            category_change_count[category] = 0.0
             for label in cat_values[category]:
-                category_count[category + str(label)] = 0
+                category_count[category + str(label)] = 0.0
 
         for shopping_pt in range(1, last_shopping_pt[i] + 1):
             plan_id = ''
@@ -120,24 +111,28 @@ def add_dynamic_predictors(df, predictors, last_shopping_pt):
                 # count the number of times each category ('A', 'B', etc.) has a certain value
                 label = this_df.ix[shopping_pt][category]
                 category_count[category + str(label)] += 1
+                if shopping_pt > 1:
+                    # check for a change in plan
+                    previous_label = this_df.ix[shopping_pt-1][category]
+                    if label != previous_label:
+                        category_change_count[category] += 1
 
             plans.append(rmap[plan_id])
+            df.set_value((customer, shopping_pt), 'planID', plans[-1])
+            df.set_value((customer, shopping_pt), 'fraction_last_plan', plans.count(plans[-1]) / float(len(plans)))
+            # find most commonly-looked at plan
+            unique_plans = np.unique(plans)
+            pcounts = [plans.count(p) for p in unique_plans]
+            df.set_value((customer, shopping_pt), 'most_common_plan', unique_plans[np.argmax(pcounts)])
 
-        predictors.set_value(customer, 'first_price', this_df.ix[1]['cost'])
-        predictors.set_value(customer, 'last_price', this_df.ix[last_shopping_pt[i]]['cost'])
-        predictors.set_value(customer, 'n_shopping', last_shopping_pt[i])
-        predictors.set_value(customer, 'first_plan', plans[0])
-        predictors.set_value(customer, 'last_plan', plans[-1])
-        predictors.set_value(customer, 'fraction_last_plan', plans.count(plans[-1]) / float(len(plans)))
-        # add predictors for each category
-        for key in category_count.keys():
-            predictors.set_value(customer, 'fraction_' + key, category_count[key] / float(len(plans)))
-        # find most commonly-looked at plan
-        unique_plans = np.unique(plans)
-        pcounts = [plans.count(p) for p in unique_plans]
-        predictors.set_value(customer, 'most_common_plan', unique_plans[np.argmax(pcounts)])
+            # add predictors for each category
+            for key in category_count.keys():
+                df.set_value((customer, shopping_pt), 'fraction_' + key, category_count[key] / float(len(plans)))
+                if shopping_pt > 1:
+                    df.set_value((customer, shopping_pt), 'fraction_changed_' + category,
+                                 category_change_count[key] / float(len(plans)-1))
 
-    return predictors
+    return df
 
 
 def compress_dtypes(df):
@@ -156,7 +151,7 @@ def compress_dtypes(df):
     return df
 
 
-def make_predictors(df, do_train=True):
+def make_predictors(df):
     """Turn the raw data into a dataframe containing the predictors."""
 
     df.set_index(['customer_ID', 'shopping_pt'], inplace=True)
@@ -164,42 +159,20 @@ def make_predictors(df, do_train=True):
     customer_ids = df.index.get_level_values(0).unique()
     # find (customer ID, last shopping point) pairs
     print 'Getting last shopping point for each customer...'
-    if do_train:
-        last_idx = [(cid, df.ix[cid].index[-2]) for cid in customer_ids]
-    else:
-        last_idx = [(cid, df.ix[cid].index[-1]) for cid in customer_ids]
 
     # use the features from the shopping point before the one where the customer made a purchase, since some of the
     # predictors change
-    last_df = df.ix[last_idx].reset_index(level=1)
+    df = add_static_predictors(df)
 
-    predictors = make_static_predictors(last_df)
+    last_shopping_pnt = [df.ix[cid].index[-1] for cid in customer_ids]
 
-    predictors = add_dynamic_predictors(df, predictors, last_df['shopping_pt'].values)
-
-    cat_values = {'A': (0, 1, 2), 'B': (0, 1), 'C': (1, 2, 3, 4), 'D': (1, 2, 3), 'E': (0, 1), 'F': (0, 1, 2, 3),
-                  'G': (1, 2, 3, 4)}
-
-    print 'Adding planIDs to original dataframe...'
-    if do_train:
-        # add planIDs to the original dataframe for the training set
-        rmap = make_response_map()
-        df['planID'] = 0
-        for i, customer in enumerate(customer_ids):
-            this_df = df.ix[customer]
-            for shopping_pt in this_df.index:
-                plan_id = ''
-                for category in cat_values.keys():
-                    # get unique planID for this sequence of category values
-                    plan_id += str(this_df.ix[shopping_pt][category])
-                df.set_value((customer, shopping_pt), 'planID', rmap[plan_id])
+    df = add_dynamic_predictors(df, last_shopping_pnt)
 
     # compress data types
     print 'Compressing data types...'
-    predictors = compress_dtypes(predictors)
     df = compress_dtypes(df)
 
-    return df, predictors
+    return df
 
 
 def make_response(df):
@@ -216,19 +189,17 @@ if __name__ == "__main__":
     df = pd.read_csv(data_dir + 'train.csv')
 
     print 'Building training set...'
-    df, predictors = make_predictors(df, do_train=True)
+    df = make_predictors(df)
 
     response = make_response(df)
 
     df.to_hdf(data_dir + 'training_set.h5', 'df')
-    predictors.to_hdf(data_dir + 'training_predictors.h5', 'df')
     response.to_csv(data_dir + 'training_response.csv')
 
-    del df, predictors, response
+    del df, response
 
     df = pd.read_csv(data_dir + 'test_v2.csv')
 
     print 'Building test set...'
-    df, predictors = make_predictors(df, do_train=False)
+    df = make_predictors(df)
     df.to_hdf(data_dir + 'test_set.h5', 'df')
-    predictors.to_hdf(data_dir + 'test_predictors.h5', 'df')

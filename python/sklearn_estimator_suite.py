@@ -44,7 +44,8 @@ class BasePredictorSuite(object):
     __metaclass__ = abc.ABCMeta
 
     @abc.abstractmethod
-    def __init__(self, tuning_ranges=None, models=None, cv=None, njobs=1, pre_dispatch='2*n_jobs', stack=True):
+    def __init__(self, tuning_ranges=None, models=None, cv=None, njobs=1, pre_dispatch='2*n_jobs', stack=True,
+                 verbose=False):
         """
         Initialize a pipeline to run a suite of scikit-learn estimators. The tuning parameters are chosen through
         cross-validation or the out-of-bags score (for Random Forests) as part of the fitting process.
@@ -59,8 +60,10 @@ class BasePredictorSuite(object):
             details.
         :param stack: If true, then the predict() method will return a stacked (averaged) value over the estimators.
             Otherwise, if false, then predict() will return the predictions for each estimator.
+        :param verbose: If true, print out helpful information.
         """
         super(BasePredictorSuite, self).__init__()
+        self.verbose = verbose
         if tuning_ranges is None:
             tuning_ranges = dict()
         self.tuning_ranges = tuning_ranges
@@ -75,10 +78,11 @@ class BasePredictorSuite(object):
                 # make sure the model names are in the dictionary of tuning parameters
                 model.__class__.__name__ in tuning_ranges
             except ValueError:
-                print 'Could not find tuning parameters for', model.__class__.__name__
+                'Could not find tuning parameters for', model.__class__.__name__
 
         if cv is None:
-            self.cv = 3
+            cv = 3
+        self.cv = cv
         self.njobs = njobs
         self.pre_dispatch = pre_dispatch
         self.scorer = None
@@ -115,6 +119,8 @@ class BasePredictorSuite(object):
                     pv_min = np.log10(pvalue_list[0]) - dp
                     pv_max = np.log10(pvalue_list[1])
                     self.tuning_ranges[model_name][param_name] = list(np.logspace(pv_min, pv_max, ngrid))
+                    if self.verbose:
+                        print self.tuning_ranges[model_name][param_name]
             elif idx == ngrid - 1:
                 # last element of grid, so expand above it
                 if pvalue_list[idx] is None:
@@ -140,6 +146,8 @@ class BasePredictorSuite(object):
                     pv_min = np.log10(pvalue_list[idx-1])
                     pv_max = np.log10(pvalue_list[idx]) + dp
                     self.tuning_ranges[model_name][param_name] = list(np.logspace(pv_min, pv_max, ngrid))
+                    if self.verbose:
+                        print self.tuning_ranges[model_name][param_name]
             else:
                 # inner element of grid
                 if pvalue_list[idx + 1] is None:
@@ -161,6 +169,8 @@ class BasePredictorSuite(object):
                     pv_min = np.log10(pvalue_list[idx-1])
                     pv_max = np.log10(pvalue_list[idx+1])
                     self.tuning_ranges[model_name][param_name] = list(np.logspace(pv_min, pv_max, ngrid))
+                    if self.verbose:
+                        print self.tuning_ranges[model_name][param_name]
 
             # print 'New Grid:', self.tuning_ranges[model_name][param_name]
 
@@ -175,14 +185,16 @@ class BasePredictorSuite(object):
         :return: A tuple containing the scikit-learn estimator object with the best tuning parameters, the score
             corresponding to the best tuning parameters, and a dictionary containing the best tuning parameter values.
         """
-        print 'Doing cross-validation for model', self.model_names[model_idx], '...'
+        if self.verbose:
+            print 'Doing cross-validation for model', self.model_names[model_idx], '...'
         grid = GridSearchCV(self.models[model_idx], self.tuning_ranges[self.model_names[model_idx]],
                             scoring=self.scorer, n_jobs=self.njobs, cv=self.cv, pre_dispatch=self.pre_dispatch)
         grid.fit(X, y)
-        print 'Best', self.model_names[model_idx], 'has:'
-        for tuning_parameter in self.tuning_ranges[self.model_names[model_idx]]:
-            print '    ', tuning_parameter, '=', grid.best_params_[tuning_parameter]
-        print '     CV Score of', grid.best_score_
+        if self.verbose:
+            print 'Best', self.model_names[model_idx], 'has:'
+            for tuning_parameter in self.tuning_ranges[self.model_names[model_idx]]:
+                print '    ', tuning_parameter, '=', grid.best_params_[tuning_parameter]
+            print '     CV Score of', grid.best_score_
         return grid.best_estimator_, grid.best_score_, grid.best_params_
 
     def oob_validate(self, X, model_idx, y):
@@ -197,7 +209,8 @@ class BasePredictorSuite(object):
         :return: A tuple containing the scikit-learn estimator object with the best tuning parameters, the score
             corresponding to the best tuning parameters, and a dictionary containing the best tuning parameter values.
         """
-        print 'Doing OOB-validation for model', self.model_names[model_idx], '...'
+        if self.verbose:
+            print 'Doing OOB-validation for model', self.model_names[model_idx], '...'
 
         tune_grid = list(ParameterGrid(self.tuning_ranges[self.model_names[model_idx]]))
 
@@ -222,10 +235,11 @@ class BasePredictorSuite(object):
         for tpar in self.tuning_ranges[self.model_names[model_idx]]:
             best_tparams[tpar] = best_params[tpar]  # only grab the values of the best tuning parameter
 
-        print 'Best', self.model_names[model_idx], 'has:'
-        for tuning_parameter in self.tuning_ranges[self.model_names[model_idx]]:
-            print '    ', tuning_parameter, '=', best_tparams[tuning_parameter]
-        print '     OOB Score of', best_score
+        if self.verbose:
+            print 'Best', self.model_names[model_idx], 'has:'
+            for tuning_parameter in self.tuning_ranges[self.model_names[model_idx]]:
+                print '    ', tuning_parameter, '=', best_tparams[tuning_parameter]
+            print '     OOB Score of', best_score
 
         return best_estimator, best_score, best_tparams
 
@@ -245,13 +259,13 @@ class BasePredictorSuite(object):
         try:
             X.shape[0] == ndata
         except ValueError:
-            print 'X and y must have same number of rows.'
+            'X and y must have same number of rows.'
 
         if np.isscalar(n_refinements):
             # use same number of refinements for all models
             n_refinements = {name: n_refinements for name in self.model_names}
 
-        if type(self.cv) == int:
+        if type(self.cv) in int_types:
             # construct cross-validation iterator
             self.cv = KFold(ndata, n_folds=self.cv)
         elif self.cv.n != ndata:
@@ -270,7 +284,8 @@ class BasePredictorSuite(object):
             self.best_scores[self.model_names[k]] = best_score
 
             for i in range(n_refinements[self.model_names[k]]):
-                print 'Refining Grid...'
+                if self.verbose:
+                    print 'Refining Grid...'
                 old_score = best_score
                 # now refine the grid and refit
                 self.refine_grid(best_params, self.model_names[k])
@@ -281,9 +296,9 @@ class BasePredictorSuite(object):
                 else:
                     # use cross-validation for validation error
                     best_estimator, best_score, best_params = self.cross_validate(X, k, y)
-
-                print '     New Validation Score of', best_score, 'is an improvement of', \
-                    100.0 * (best_score - old_score) / np.abs(old_score), '%.'
+                if self.verbose:
+                    print '     New Validation Score of', best_score, 'is an improvement of', \
+                        100.0 * (best_score - old_score) / np.abs(old_score), '%.'
 
                 self.models[k] = best_estimator
                 self.best_scores[self.model_names[k]] = best_score
@@ -309,12 +324,13 @@ class BasePredictorSuite(object):
 class ClassificationSuite(BasePredictorSuite):
 
     def __init__(self, n_features=None, tuning_ranges=None, models=None, cv=None, njobs=1, pre_dispatch='2*n_jobs',
-                 stack=True):
+                 stack=True, verbose=False):
         """
         Initialize a pipeline to run a suite of scikit-learn classifiers. The tuning parameters are chosen through
         cross-validation or the out-of-bags score (for Random Forests) as part of the fitting process. The score
         function used is the accuracy score (fraction of correct classifications).
 
+        :param verbose: Provide helpful output.
         :param n_features: The number of features that will be used when performing the fit. Must supply either
             n_features or tuning_ranges. This is necessary because the tuning parameter for the RandomForestClassifier
             is max_features, and max_features must be less than the number of features in the input array. So, in order
@@ -336,7 +352,7 @@ class ClassificationSuite(BasePredictorSuite):
             try:
                 n_features is not None
             except ValueError:
-                print 'Must supply one of n_features or tuning_ranges.'
+                'Must supply one of n_features or tuning_ranges.'
             # use default values for grid search over tuning parameters for all models
             tuning_ranges = {'LogisticRegression': {'C': list(np.logspace(-3.0, 0.0, 5))},
                              'DecisionTreeClassifier': {'max_depth': [5, 10, 20, 50, None]},
@@ -358,7 +374,8 @@ class ClassificationSuite(BasePredictorSuite):
             if 'GbcAutoNtrees' in tuning_ranges:
                 models.append(GbcAutoNtrees(subsample=0.5, n_estimators=1000, learning_rate=0.01))
 
-        super(ClassificationSuite, self).__init__(tuning_ranges, models, cv, njobs, pre_dispatch, stack)
+        super(ClassificationSuite, self).__init__(tuning_ranges=tuning_ranges, models=models, cv=cv, njobs=njobs,
+                                                  pre_dispatch=pre_dispatch, stack=stack, verbose=verbose)
 
         self.scorer = make_scorer(accuracy_score)
         self.nfeatures = n_features

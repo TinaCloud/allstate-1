@@ -43,16 +43,19 @@ def add_static_predictors(df):
 
     df['time'] = df['time'].map(time_to_float)
 
-    print 'Calculating remaining static features.'
+    print 'Converting car_value from string to integer.'
 
     # convert car_value from letters to numbers
     uvals = np.sort(df['car_value'].unique())
     carv_mapping = {cv: v for cv, v in zip(uvals, range(1, len(uvals)+1))}
     df['car_value'] = df['car_value'].map(carv_mapping)
 
+    print 'Binarizing state values...'
     # turn non-binary categorical predictors into binary-valued predictors
     for state in df['state'].unique():
         df['is_' + state] = df['state'] == state
+
+    print 'Binarizing C_previous values...'
 
     df['is_C_previous_nan'] = df['C_previous'].isnull()
     df['is_C_previous_1'] = df['C_previous'] == 1
@@ -60,8 +63,13 @@ def add_static_predictors(df):
     df['is_C_previous_3'] = df['C_previous'] == 3
     df['is_C_previous_4'] = df['C_previous'] == 4
 
-    for gs in df['group_size']:
+    print 'Binarizing group size values...'
+
+    for gs in np.sort(df['group_size'].unique()):
+        print gs, '...'
         df['is_group_size_' + str(gs)] = df['group_size'] == gs
+
+    print 'Binarizing day values...'
 
     df['is_Mon'] = df['day'] == 0
     df['is_Tue'] = df['day'] == 1
@@ -70,6 +78,12 @@ def add_static_predictors(df):
     df['is_Fri'] = df['day'] == 4
     df['is_Sat'] = df['day'] == 5
     df['is_Sun'] = df['day'] == 6
+
+    print 'Finding missing data...'
+    fill_values = {'risk_factor': df['risk_factor'].mean(), 'duration_previous': df['duration_previous'].mean()}
+    df['is_risk_factor_missing'] = pd.isnull(df['risk_factor'])
+    df['is_duration_previous_missing'] = pd.isnull(df['duration_previous'])
+    df = df.fillna(value=fill_values)
 
     return df
 
@@ -113,9 +127,9 @@ def add_dynamic_predictors(df, last_shopping_pt):
                 category_count[category + str(label)] += 1
                 if shopping_pt > 1:
                     # check for a change in plan
-                    previous_label = this_df.ix[shopping_pt-1][category]
                     if label != previous_label:
                         category_change_count[category] += 1
+                previous_label = label
 
             plans.append(rmap[plan_id])
             df.set_value((customer, shopping_pt), 'planID', plans[-1])
@@ -128,9 +142,10 @@ def add_dynamic_predictors(df, last_shopping_pt):
             # add predictors for each category
             for key in category_count.keys():
                 df.set_value((customer, shopping_pt), 'fraction_' + key, category_count[key] / float(len(plans)))
-                if shopping_pt > 1:
+            if shopping_pt > 1:
+                for category in category_change_count.keys():
                     df.set_value((customer, shopping_pt), 'fraction_changed_' + category,
-                                 category_change_count[key] / float(len(plans)-1))
+                                 category_change_count[category] / float(len(plans)-1))
 
     return df
 
@@ -153,6 +168,8 @@ def compress_dtypes(df):
 
 def make_predictors(df):
     """Turn the raw data into a dataframe containing the predictors."""
+
+    # TODO: deal with missing values
 
     df.set_index(['customer_ID', 'shopping_pt'], inplace=True)
 

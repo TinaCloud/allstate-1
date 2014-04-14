@@ -53,7 +53,7 @@ print '---'
 print ''
 
 fig, ax1 = plt.subplots()
-plt.bar(np.arange(0, len(names)) + 0.5, scores)
+plt.bar(np.arange(0, len(names)), scores)
 xtickNames = plt.setp(ax1, xticklabels=names)
 plt.setp(xtickNames, rotation=45)
 plt.ylabel('Accuracy')

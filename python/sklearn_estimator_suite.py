@@ -226,11 +226,11 @@ class BasePredictorSuite(object):
                 estimator.__setattr__(tpar, point[tpar])
             estimator.fit(X, y)
 
-        if estimator.oob_score_ > best_score:
-            # new best values, save them
-            best_score = estimator.oob_score_
-            best_estimator = estimator
-            best_params = estimator.get_params()
+            if estimator.oob_score_ > best_score:
+                # new best values, save them
+                best_score = estimator.oob_score_
+                best_estimator = estimator
+                best_params = estimator.get_params()
 
         best_tparams = dict()
         for tpar in self.tuning_ranges[self.model_names[model_idx]]:

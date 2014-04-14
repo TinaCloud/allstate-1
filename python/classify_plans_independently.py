@@ -97,14 +97,14 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
     # refine the more computationally-demanding estimators less
     n_refinements = {'LogisticRegression': 0,
                      'DecisionTreeClassifier': 2,
-                     'RandomForestClassifier': 0,
+                     'RandomForestClassifier': 1,
                      'GbcAutoNtrees': 0}
     # set the tuning ranges manually
     tuning_ranges = {'LogisticRegression': {'C': list(np.logspace(-2.0, 0.0, 5))},
                      'DecisionTreeClassifier': {'max_depth': [5, 10, 20, 50, None]},
                      'RandomForestClassifier': {'max_features':
-                                                list(np.unique(np.linspace(training_set.shape[1] / 2,
-                                                                           training_set.shape[1], 3).astype(np.int)))},
+                                                list(np.unique(np.linspace(2,
+                                                                           training_set.shape[1], 5).astype(np.int)))},
                      'GbcAutoNtrees': {'max_depth': [1, 2, 3]}}
 
     shopping_points = test_set.index.get_level_values(1).unique()
@@ -115,7 +115,7 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
     y_predict['Combined'] = 0
     y_predict.name = category
 
-    for spt in range(2, max(shopping_points) + 1):
+    for spt in range(7, max(shopping_points) + 1):
     # for spt in range(2, 4):
         print 'Training for shopping Point', spt
         X_train = training_set.xs(spt, level=1)

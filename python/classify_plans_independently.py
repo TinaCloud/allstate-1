@@ -8,11 +8,83 @@ import os
 import multiprocessing
 import cPickle
 import time
+from sklearn.linear_model import LogisticRegression
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/allstate/'
 data_dir = base_dir + 'data/'
 
 njobs = multiprocessing.cpu_count() - 1
+
+
+def logit(x):
+    return np.log(x / (1.0 - x))
+
+
+def transform_inputs(training_set, test_set):
+    print 'Transforming inputs...'
+    # transform time to be periodic
+    training_set['time'] = np.cos(training_set['time'] * np.pi / 12.0)
+    test_set['time'] = np.cos(test_set['time'] * np.pi / 12.0)
+    xmean = np.mean(np.append(training_set['time'].values, test_set['time'].values))
+    xsigma = np.std(np.append(training_set['time'].values, test_set['time'].values))
+    # standardize
+    training_set['time'] = (training_set['time'] - xmean) / xsigma
+    test_set['time'] = (test_set['time'] - xmean) / xsigma
+
+    lincols = ['car_age', 'duration_previous']
+    for c in lincols:
+        # do sqrt transform since these predictors can have a value of zero
+        training_set[c] = np.sqrt(training_set[c])
+        test_set[c] = np.sqrt(test_set[c])
+        # standardize
+        xmean = np.mean(np.append(training_set[c].values, test_set[c].values))
+        xsigma = np.std(np.append(training_set[c].values, test_set[c].values))
+        # standardize
+        training_set[c] = (training_set[c] - xmean) / xsigma
+        test_set[c] = (test_set[c] - xmean) / xsigma
+
+    logcols = ['car_value', 'risk_factor', 'age_oldest', 'age_youngest', 'cost']
+    # first recenter values
+    training_set['age_oldest'] -= 17.0
+    training_set['age_youngest'] -= 15.0
+    test_set['age_oldest'] -= 17.0
+    test_set['age_youngest'] -= 15.0
+    training_set['cost'] -= 250.0
+    test_set['cost'] -= 250.0
+    for c in logcols:
+        # do log transform since these predictors can have a value of zero
+        training_set[c] = np.log(training_set[c]).astype(np.float32)
+        test_set[c] = np.log(test_set[c]).astype(np.float32)
+        # standardize
+        xmean = np.mean(np.append(training_set[c].values, test_set[c].values))
+        xsigma = np.std(np.append(training_set[c].values, test_set[c].values))
+        # standardize
+        training_set[c] = (training_set[c] - xmean) / xsigma
+        test_set[c] = (test_set[c] - xmean) / xsigma
+
+    logit_cols = []
+    for c in training_set.columns:
+        if 'fraction' in c:
+            logit_cols.append(c)
+
+    for c in logit_cols:
+        # do logit transform since these predictors can have a value of zero
+        training_set[c][training_set[c] == 0] = 0.01
+        training_set[c][training_set[c] == 1] = 0.99
+        test_set[c][test_set[c] == 0] = 0.01
+        test_set[c][test_set[c] == 1] = 0.99
+        training_set[c] = logit(training_set[c])
+        test_set[c] = logit(test_set[c])
+        # standardize
+        xmean = np.mean(np.append(training_set[c].values, test_set[c].values))
+        xsigma = np.std(np.append(training_set[c].values, test_set[c].values))
+        # standardize
+        training_set[c] = (training_set[c] - xmean) / xsigma
+        test_set[c] = (test_set[c] - xmean) / xsigma
+
+    return training_set, test_set
 
 
 def fit_fixed_shopping_pt(training_set, response, category, test_set):
@@ -23,11 +95,17 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
     :param response: The classes for this category, a Pandas Series object.
     """
     # refine the more computationally-demanding estimators less
-    n_refinements = {'LogisticRegression': 3,
-                     'DecisionTreeClassifier': 3,
-                     'LinearSVC': 3,
+    n_refinements = {'LogisticRegression': 1,
+                     'DecisionTreeClassifier': 1,
                      'RandomForestClassifier': 1,
-                     'GbcAutoNtrees': 1}
+                     'GbcAutoNtrees': 0}
+    # set the tuning ranges manually
+    tuning_ranges = {'LogisticRegression': {'C': list(np.logspace(-2.0, 0.0, 5))},
+                     'DecisionTreeClassifier': {'max_depth': [5, 10, 20, 50, None]},
+                     'RandomForestClassifier': {'max_features':
+                                                list(np.unique(np.linspace(2,
+                                                                           training_set.shape[1], 5).astype(np.int)))},
+                     'GbcAutoNtrees': {'max_depth': [1, 2, 3, 4]}}
 
     shopping_points = training_set.index.get_level_values(1).unique()
 
@@ -35,17 +113,28 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
 
     y_predict = pd.DataFrame(data=np.zeros((len(test_cust_ids), len(n_refinements)), dtype=np.int), index=test_cust_ids,
                              columns=n_refinements.keys())
+    y_predict['Combined'] = 0
     y_predict.name = category
 
     # for spt in range(2, max(shopping_points) + 1):
-    for spt in range(2, 5):
+    for spt in range(2, 4):
         print 'Training for shopping Point', spt
-        X = training_set.xs(spt, level=1)
-        y = response.ix[X.index].values
-        X = X.values
+        X_train = training_set.xs(spt, level=1)
+        X_test = test_set.xs(spt, level=1)
+        y = response.ix[X_train.index]
+        # transform and standardize predictors
+        X_train, X_test = transform_inputs(X_train, X_test)
 
-        suite = ClassificationSuite(n_features=X.shape[1], njobs=njobs, cv=np.max((5, njobs)), verbose=True)
-        suite.fit(X, y, n_refinements=n_refinements)
+        # initialize the list of sklearn objects corresponding to different statistical models
+        models = []
+        models.append(LogisticRegression(penalty='l1', class_weight='auto'))
+        models.append(DecisionTreeClassifier())
+        models.append(RandomForestClassifier(n_estimators=500, oob_score=True, n_jobs=njobs, max_depth=25))
+        models.append(GbcAutoNtrees(subsample=0.5, n_estimators=1000, learning_rate=0.01))
+
+        suite = ClassificationSuite(n_features=X_train.shape[1], tuning_ranges=tuning_ranges, njobs=njobs,
+                                    cv=np.max((5, njobs)), verbose=True, models=models)
+        suite.fit(X_train.values, y.values, n_refinements=n_refinements)
 
         print 'Pickling models...'
         cPickle.dump(suite, open(data_dir + 'models/sklearn_suite_shopping_point' + str(spt) + '_category' +
@@ -70,11 +159,11 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
 
         # predict the test data
         print 'Predicting the class for the test set...'
-        X_test = test_set.xs(spt, level=1)
         test_cust_ids = X_test.index  # only update customers that have made it to this shopping point
         spt_predict = suite.predict_all(X_test.values)
-        for c in y_predict.columns:  # loop over the models
+        for c in n_refinements.keys():  # loop over the models
             y_predict.ix[test_cust_ids, c] = spt_predict[c]
+        y_predict.ix[test_cust_ids, 'Combined'] = suite.predict(X_test.values)
 
     return y_predict
 
@@ -88,15 +177,8 @@ if __name__ == "__main__":
     training_set = pd.read_hdf(data_dir + 'training_set.h5', 'df')
     test_set = pd.read_hdf(data_dir + 'test_set.h5', 'df')
 
-    # fill_values = {'risk_factor': training_set['risk_factor'].mean(),
-    #                'duration_previous': training_set['duration_previous'].mean()}
-    #
-    # training_set = training_set.fillna(value=fill_values)
-    # test_set = test_set.fillna(value=fill_values)
-    #
-    # customer_ids = training_set.index.get_level_values(0).unique()
-
     # for testing, reduce number of customers
+    # customer_ids = training_set.index.get_level_values(0).unique()
     # training_set = training_set.select(lambda x: x[0] < customer_ids[1000], axis=0)
 
     customer_ids = training_set.index.get_level_values(0).unique()
@@ -109,7 +191,8 @@ if __name__ == "__main__":
 
     training_set = training_set[training_set['record_type'] == 0]
 
-    not_predictors = ['record_type', 'day', 'state', 'location', 'group_size', 'C_previous', 'planID']
+    not_predictors = ['record_type', 'day', 'state', 'location', 'group_size', 'C_previous', 'planID',
+                      'most_common_plan']
     training_set = training_set.drop(not_predictors, axis=1)
     test_set = test_set.drop(not_predictors, axis=1)
 

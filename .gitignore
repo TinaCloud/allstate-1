@@ -152,3 +152,4 @@ __pychache__/
 #ignore pickle files
 *.pickle
 *.p
+*.h5

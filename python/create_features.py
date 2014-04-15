@@ -98,10 +98,11 @@ def add_dynamic_predictors(df, last_shopping_pt):
                   'G': (1, 2, 3, 4)}
 
     for category in cat_values.keys():
+        df['fraction_changed_' + category] = 0.0
         for label in cat_values[category]:
             # fraction of times customer looked at this category label (e.g., A = {0, 1, 2}, etc.)
             df['fraction_' + category + str(label)] = 0.0
-            df['fraction_changed_' + category] = 0.0
+            df['is_last_value_' + category + str(label)] = False
 
     rmap = make_response_map()
 
@@ -125,6 +126,7 @@ def add_dynamic_predictors(df, last_shopping_pt):
                 # count the number of times each category ('A', 'B', etc.) has a certain value
                 label = this_df.ix[shopping_pt][category]
                 category_count[category + str(label)] += 1
+                df.set_value((customer, shopping_pt), 'is_last_value_' + category + str(label), True)
                 if shopping_pt > 1:
                     # check for a change in plan
                     if label != previous_label:

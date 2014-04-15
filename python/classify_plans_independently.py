@@ -3,6 +3,7 @@ __author__ = 'brandonkelly'
 import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
+from sklearn.base import BaseEstimator
 from sklearn_estimator_suite import GbcAutoNtrees, ClassificationSuite
 import os
 import multiprocessing
@@ -16,6 +17,19 @@ base_dir = os.environ['HOME'] + '/Projects/Kaggle/allstate/'
 data_dir = base_dir + 'data/'
 
 njobs = multiprocessing.cpu_count() - 1
+
+
+class LastObservedValue(BaseEstimator):
+    """An estimator assigning probability of 1.0 to the last observed class.
+    """
+    def fit(self, X, y):
+        self.nclasses = len(np.unique(y))
+        self.first_class = y.min()
+
+    def predict(self, X):
+        y = np.zeros((X.shape[0], self.nclasses), dtype=np.float64)
+        # assign probability of 1.0 to last observed class
+        return y
 
 
 def logit(x):
@@ -115,6 +129,14 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
     y_predict['Combined'] = 0
     y_predict.name = category
 
+    # add last plan value to end of predictors
+    categories = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
+    train_last_value = training_set[categories]
+    test_last_value = test_set[categories]
+
+    training_set = training_set.drop(categories, axis=1)
+    test_set = test_set.drop(categories, axis=1)
+
     for spt in range(2, max(shopping_points) + 1):
         print 'Training for shopping Point', spt
         X_train = training_set.xs(spt, level=1)
@@ -123,6 +145,10 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
         print 'Found', len(y), 'customers.'
         # transform and standardize predictors
         X_train, X_test = transform_inputs(X_train, X_test)
+
+        # add last observed value to end, since this forms the base estimator for GBC
+        X_train = np.append(X_train, train_last_value.xs(spt, level=1)[category], axis=1)
+        X_test = np.append(X_test, train_last_value.xs(spt, level=1)[category], axis=1)
 
         # initialize the list of sklearn objects corresponding to different statistical models
         models = []

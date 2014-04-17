@@ -4,12 +4,11 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas as pd
 from sklearn.base import BaseEstimator
-from sklearn_estimator_suite import GbcAutoNtrees, ClassificationSuite
+from bck_stats.sklearn_estimator_suite import GbcAutoNtrees, ClassificationSuite
 import os
 import multiprocessing
 import cPickle
 import time
-from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.ensemble import RandomForestClassifier
 
@@ -24,11 +23,20 @@ class LastObservedValue(BaseEstimator):
     """
     def fit(self, X, y):
         self.nclasses = len(np.unique(y))
-        self.first_class = y.min()
 
     def predict(self, X):
-        y = np.zeros((X.shape[0], self.nclasses), dtype=np.float64)
-        # assign probability of 1.0 to last observed class
+        if self.nclasses == 2:
+            # need to return log-odds ratio for binary classification
+            y = np.zeros(X.shape[0], dtype=np.float64)
+            last_value = X[:, -1]
+            y[last_value == 1] = np.log(1000.0)
+            y[last_value == 0] = np.log(1.0 / 1000.0)
+            y = y.reshape(X.shape[0], 1)
+        else:
+            y = np.zeros((X.shape[0], self.nclasses), dtype=np.float64)
+            # assign probability of 1.0 to last observed class
+            idx = (np.asarray(range(X.shape[0])), X[:, -1].astype(np.int))
+            y[idx] = 1.0
         return y
 
 
@@ -109,17 +117,9 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
     :param response: The classes for this category, a Pandas Series object.
     """
     # refine the more computationally-demanding estimators less
-    n_refinements = {'LogisticRegression': 0,
-                     'DecisionTreeClassifier': 2,
+    n_refinements = {'DecisionTreeClassifier': 2,
                      'RandomForestClassifier': 0,
                      'GbcAutoNtrees': 0}
-    # set the tuning ranges manually
-    tuning_ranges = {'LogisticRegression': {'C': list(np.logspace(-2.0, 0.0, 5))},
-                     'DecisionTreeClassifier': {'max_depth': [5, 10, 20, 50, None]},
-                     'RandomForestClassifier': {'max_features':
-                                                list(np.unique(np.logspace(np.log10(2), np.log10(training_set.shape[1]),
-                                                                           5).astype(np.int)))},
-                     'GbcAutoNtrees': {'max_depth': [1, 2, 3]}}
 
     shopping_points = test_set.index.get_level_values(1).unique()
     test_cust_ids = test_set.index.get_level_values(0).unique()
@@ -147,20 +147,27 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
         X_train, X_test = transform_inputs(X_train, X_test)
 
         # add last observed value to end, since this forms the base estimator for GBC
-        X_train = np.append(X_train, train_last_value.xs(spt, level=1)[category], axis=1)
-        X_test = np.append(X_test, train_last_value.xs(spt, level=1)[category], axis=1)
+        this_train_last_value = train_last_value.xs(spt, level=1)[category].values
+        if category in ['C', 'D', 'G']:
+            # indicators for this category start at 1
+            this_train_last_value -= 1
+        X_train = np.append(X_train.values, this_train_last_value[:, np.newaxis], axis=1)
 
         # initialize the list of sklearn objects corresponding to different statistical models
-        models = []
-        # models.append(LogisticRegression(penalty='l1', class_weight='auto'))
-        models.append(DecisionTreeClassifier())
-        models.append(RandomForestClassifier(n_estimators=300, oob_score=True, n_jobs=njobs, max_depth=30))
-        # TODO: use last observed value as the base estimator
-        models.append(GbcAutoNtrees(subsample=0.5, n_estimators=1000, learning_rate=0.01))
+        models = [DecisionTreeClassifier(),
+                  RandomForestClassifier(n_estimators=300, oob_score=True, n_jobs=njobs, max_depth=30),
+                  GbcAutoNtrees(subsample=0.5, n_estimators=1000, learning_rate=0.01, init=LastObservedValue())]
+        # set the tuning ranges manually
+        tuning_ranges = {'DecisionTreeClassifier': {'max_depth': [5, 10, 20, 50, None]},
+                         'RandomForestClassifier': {'max_features':
+                                                    list(np.unique(np.logspace(np.log10(2),
+                                                                               np.log10(X_train.shape[1] - 1),
+                                                                               5).astype(np.int)))},
+                         'GbcAutoNtrees': {'max_depth': [1, 2, 3]}}
 
         suite = ClassificationSuite(n_features=X_train.shape[1], tuning_ranges=tuning_ranges, njobs=njobs,
                                     cv=np.max((5, njobs)), verbose=True, models=models)
-        suite.fit(X_train.values, y.values, n_refinements=n_refinements)
+        suite.fit(X_train, y.values, n_refinements=n_refinements)
 
         print 'Pickling models...'
         cPickle.dump(suite, open(data_dir + 'models/sklearn_suite_shopping_point' + str(spt) + '_category' +
@@ -186,10 +193,15 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
         # predict the test data
         print 'Predicting the class for the test set...'
         test_cust_ids = X_test.index  # only update customers that have made it to this shopping point
-        spt_predict = suite.predict_all(X_test.values)
+        this_test_last_value = test_last_value.xs(spt, level=1)[category].values
+        if category in ['C', 'D', 'G']:
+            # indicators for this category start at 1
+            this_test_last_value -= 1
+        X_test = np.append(X_test.values, this_test_last_value[:, np.newaxis], axis=1)
+        spt_predict = suite.predict_all(X_test)
         for c in n_refinements.keys():  # loop over the models
             y_predict.ix[test_cust_ids, c] = spt_predict[c]
-        y_predict.ix[test_cust_ids, 'Combined'] = suite.predict(X_test.values)
+        y_predict.ix[test_cust_ids, 'Combined'] = suite.predict(X_test)
 
     return y_predict
 

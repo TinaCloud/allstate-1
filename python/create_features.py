@@ -171,8 +171,6 @@ def compress_dtypes(df):
 def make_predictors(df):
     """Turn the raw data into a dataframe containing the predictors."""
 
-    # TODO: deal with missing values
-
     df.set_index(['customer_ID', 'shopping_pt'], inplace=True)
 
     customer_ids = df.index.get_level_values(0).unique()

@@ -126,7 +126,7 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
 
     y_predict = pd.DataFrame(data=np.zeros((len(test_cust_ids), len(n_refinements)), dtype=np.int), index=test_cust_ids,
                              columns=n_refinements.keys())
-    y_predict['Combined'] = 0
+    # y_predict['Combined'] = 0
     y_predict.name = category
 
     # add last plan value to end of predictors
@@ -177,19 +177,6 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
         for model_name in suite.best_scores:
             print model_name, suite.best_scores[model_name]
 
-        # plot the validation error for each model
-        fig, ax1 = plt.subplots()
-        plt.bar(np.arange(0, len(suite.best_scores.keys())), suite.best_scores.values())
-        plt.ylim(ymin=min(0.5, np.min(suite.best_scores.values())))
-        xtickNames = plt.setp(ax1, xticklabels=suite.best_scores.keys())
-        plt.setp(xtickNames, rotation=45)
-        plt.ylabel('Validation Accuracy')
-        plt.xlabel('Model')
-        plt.title(category + ', Fixed Shopping Point ' + str(spt))
-        plt.tight_layout()
-        plt.savefig(base_dir + 'plots/cverror_sklearn_suite_shopping_point' + str(spt) + '_category' + category +
-                    '.png')
-
         # predict the test data
         print 'Predicting the class for the test set...'
         test_cust_ids = X_test.index  # only update customers that have made it to this shopping point
@@ -201,7 +188,7 @@ def fit_fixed_shopping_pt(training_set, response, category, test_set):
         spt_predict = suite.predict_all(X_test)
         for c in n_refinements.keys():  # loop over the models
             y_predict.ix[test_cust_ids, c] = spt_predict[c]
-        y_predict.ix[test_cust_ids, 'Combined'] = suite.predict(X_test)
+        # y_predict.ix[test_cust_ids, 'Combined'] = suite.predict(X_test)
 
     return y_predict
 
@@ -217,7 +204,7 @@ if __name__ == "__main__":
 
     # for testing, reduce number of customers
     # customer_ids = training_set.index.get_level_values(0).unique()
-    # training_set = training_set.select(lambda x: x[0] < customer_ids[1000], axis=0)
+    # training_set = training_set.select(lambda x: x[0] < customer_ids[500], axis=0)
 
     customer_ids = training_set.index.get_level_values(0).unique()
 

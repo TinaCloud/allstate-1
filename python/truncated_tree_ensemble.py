@@ -17,6 +17,7 @@ base_dir = os.environ['HOME'] + '/Projects/Kaggle/allstate/'
 data_dir = base_dir + 'data/'
 
 njobs = multiprocessing.cpu_count() - 1
+njobs = 3
 
 
 def get_truncated_shopping_indices(n_shop, p=0.3):
@@ -188,14 +189,14 @@ def fit_truncated_tree(training_set, response, test_set, ntrees, n_shop):
 
 if __name__ == "__main__":
 
-    ntrees = 100
+    ntrees = 500
 
     training_set = pd.read_hdf(data_dir + 'training_set.h5', 'df')
     test_set = pd.read_hdf(data_dir + 'test_set.h5', 'df')
 
     # for testing, reduce number of customers
-    customer_ids = training_set.index.get_level_values(0).unique()
-    training_set = training_set.select(lambda x: x[0] < customer_ids[1000], axis=0)
+    # customer_ids = training_set.index.get_level_values(0).unique()
+    # training_set = training_set.select(lambda x: x[0] < customer_ids[1000], axis=0)
 
     customer_ids = training_set.index.get_level_values(0).unique()
 
@@ -215,11 +216,14 @@ if __name__ == "__main__":
     training_set['time'] = np.cos(training_set['time'] * np.pi / 12.0)
     test_set['time'] = np.cos(test_set['time'] * np.pi / 12.0)
 
+    last_spt_idx = [(cid, test_set.ix[cid].index[-1]) for cid in customer_ids]
+
     predictions = []
     for category in response_columns:
         print 'Training category', category, '...'
         tstart = time.clock()
         this_prediction, trunc_tree = fit_truncated_tree(training_set, response[category], test_set, ntrees, n_shop)
+        this_prediction['LastObsValue'] = test_set.ix[last_spt_idx][category]
 
         print 'Pickling models...'
         cPickle.dump(trunc_tree, open(data_dir + 'models/truncated_trees_category' + category + '.pickle', 'wb'))

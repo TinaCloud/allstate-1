@@ -21,22 +21,35 @@ njobs = multiprocessing.cpu_count() - 1
 class LastObservedValue(BaseEstimator):
     """An estimator assigning probability of 1.0 to the last observed class.
     """
+    def __init__(self, last_obs_idx):
+        self.last_obs_idx = last_obs_idx
+        self.nclasses = 0
+        self.priors = None
+
     def fit(self, X, y):
-        self.nclasses = len(np.unique(y))
+        self.nclasses = len(self.last_obs_idx)
+        self.priors = np.zeros((self.nclasses, self.nclasses))
+        for i in xrange(self.nclasses):
+            # note that this assumes the class labels are indexed in ascending order in the X array
+            class_counts = np.bincount(y[X[:, self.last_obs_idx[i]].astype(np.bool)])
+            # priors[j, i] is fraction in class j with last observed value as class i
+            self.priors[:, i] = class_counts / float(y.shape[0])
+            self.priors[:, i] /= self.priors[:, i].sum()
 
     def predict(self, X):
         if self.nclasses == 2:
             # need to return log-odds ratio for binary classification
-            y = np.zeros(X.shape[0], dtype=np.float64)
-            last_value = X[:, -1]
-            y[last_value == 1] = np.log(1000.0)
-            y[last_value == 0] = np.log(1.0 / 1000.0)
+            y = np.zeros(X.shape[0])
+            # log-odds of being in class 0 with class 0 as the last observed value
+            y[X[:, self.last_obs_idx[0]].astype(np.bool)] = np.log(self.priors[0, 0] / self.priors[1, 0])
+            # log-odds of being in class 0 with class 1 as the last observed value
+            y[-X[:, self.last_obs_idx[0]].astype(np.bool)] = np.log(self.priors[0, 1] / self.priors[1, 1])
             y = y.reshape(X.shape[0], 1)
         else:
             y = np.zeros((X.shape[0], self.nclasses), dtype=np.float64)
-            # assign probability of 1.0 to last observed class
-            idx = (np.asarray(range(X.shape[0])), X[:, -1].astype(np.int))
-            y[idx] = 1.0
+            for i in xrange(self.nclasses):
+                y[X[:, self.last_obs_idx[i]].astype(np.bool)] = self.priors[:, i]
+
         return y
 
 

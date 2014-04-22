@@ -19,7 +19,7 @@ njobs = multiprocessing.cpu_count() - 1
 
 
 class LastObservedValue(BaseEstimator):
-    """An estimator assigning probability of 1.0 to the last observed class.
+    """An estimator assigning prior probabilities based on the last observed class.
     """
     def __init__(self, last_obs_idx):
         self.last_obs_idx = last_obs_idx

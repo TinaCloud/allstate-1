@@ -1,0 +1,8 @@
+# Test optimal proposals, good when there are many irrelevant features
+python ~/src/github/allstate/python/run_smc.py --n_particles 20  --proposal posterior
+python ~/src/github/allstate/python/run_smc.py --n_particles 200 --proposal posterior
+
+# Test prior proposals, faster and thus more particles
+python ~/src/github/allstate/python/run_smc.py --n_particles 100  --proposal prior
+python ~/src/github/allstate/python/run_smc.py --n_particles 1000 --proposal prior
+python ~/src/github/allstate/python/run_smc.py --n_particles 5000 --proposal prior

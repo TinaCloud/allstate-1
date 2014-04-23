@@ -29,6 +29,7 @@ class LastObservedValue(BaseEstimator):
     def fit(self, X, y):
         self.nclasses = len(self.last_obs_idx)
         self.priors = np.zeros((self.nclasses, self.nclasses))
+        # TODO: need to make this average over the shopping history
         for i in xrange(self.nclasses):
             # note that this assumes the class labels are indexed in ascending order in the X array
             class_counts = np.bincount(y[X[:, self.last_obs_idx[i]].astype(np.bool)])

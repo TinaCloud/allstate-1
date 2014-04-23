@@ -21,8 +21,8 @@ base_dir = os.environ['HOME'] + '/Projects/Kaggle/allstate/'
 data_dir = base_dir + 'data/'
 
 njobs = multiprocessing.cpu_count() - 1
-njobs = 4
-nfolds = 5
+njobs = 1
+nfolds = 1
 
 MAX_INT = np.iinfo(np.int32).max
 
@@ -86,6 +86,7 @@ class TruncatedHistoryTrees(object):
 
         random_state = check_random_state(self.random_state)
 
+        print 'Cloning the trees...'
         for i in range(self.ntrees):
             tree = clone(self.base_estimator)
             tree.set_params(random_state=random_state.randint(MAX_INT))
@@ -94,6 +95,7 @@ class TruncatedHistoryTrees(object):
         # Parallel loop: we use the threading backend as the Cython code for
         # fitting the trees is internally releasing the Python GIL making
         # threading always more efficient than multiprocessing in that case.
+        print 'Building the trees...'
         all_trees = Parallel(n_jobs=n_jobs, verbose=self.verbose,
                              backend="threading")(
             delayed(_parallel_build_trees)(
@@ -160,9 +162,6 @@ def fit_truncated_tree(training_set, response, test_set, ntrees, n_shop):
     y_predict = pd.DataFrame(data=np.zeros((len(test_cust_ids), 3), dtype=np.int), index=test_cust_ids,
                              columns=['MajorityVote', 'AverageProb', 'LastObsValue'])
 
-    # get CV split
-    folds = KFold(len(train_cust_ids), n_folds=nfolds)
-
     # run over a grid of tuning parameters and choose the values that minimize the CV score
     # pgrid = {'max_features': list(np.unique(np.logspace(np.log10(2),
     #                                                     np.log10(training_set.shape[1]), 5).astype(np.int))),
@@ -177,44 +176,49 @@ def fit_truncated_tree(training_set, response, test_set, ntrees, n_shop):
 
     print 'Using features', training_set.columns
 
-    for train, validate in folds:
-        # reset the index here to include the shopping point as a predictor
-        X_train = training_set.ix[train_cust_ids[train]].values
-        y_train = response.ix[train_cust_ids[train]].values
-        n_shop_train = n_shop[train]
-        X_val = training_set.ix[train_cust_ids[validate]].values
-        y_val = response.ix[train_cust_ids[validate]].values
+    if nfolds > 1:
+        # do cross-validation
+        folds = KFold(len(train_cust_ids), n_folds=nfolds)
+        for train, validate in folds:
+            # reset the index here to include the shopping point as a predictor
+            X_train = training_set.ix[train_cust_ids[train]].values
+            y_train = response.ix[train_cust_ids[train]].values
+            n_shop_train = n_shop[train]
+            X_val = training_set.ix[train_cust_ids[validate]].values
+            y_val = response.ix[train_cust_ids[validate]].values
 
-        # X_val contains the entire shopping history, so we need to truncate it so it is more representative of the
-        # test set
-        n_shop_val = n_shop[validate]
-        trunc_idx = get_truncated_shopping_indices(n_shop_val)
-        X_val = X_val[trunc_idx]
+            # X_val contains the entire shopping history, so we need to truncate it so it is more representative of the
+            # test set
+            n_shop_val = n_shop[validate]
+            trunc_idx = get_truncated_shopping_indices(n_shop_val)
+            X_val = X_val[trunc_idx]
 
-        cv_score = validate_trunc_tree(X_train, y_train, X_val, y_val, n_shop_train, grid)
-        cv_scores.append(cv_score)
+            cv_score = validate_trunc_tree(X_train, y_train, X_val, y_val, n_shop_train, grid)
+            cv_scores.append(cv_score)
 
-    cv_score = np.zeros(len(cv_scores[0]))
-    for score in cv_scores:
-        cv_score += score
-    cv_score /= len(cv_scores)
+        cv_score = np.zeros(len(cv_scores[0]))
+        for score in cv_scores:
+            cv_score += score
+        cv_score /= len(cv_scores)
 
-    print 'Individual CV scores:'
-    for k in range(len(cv_score)):
-        print grid[k], cv_score[k]
+        print 'Individual CV scores:'
+        for k in range(len(cv_score)):
+            print grid[k], cv_score[k]
 
-    print ''
+        print ''
 
-    best_idx = cv_score.argmax()
-    best_params = grid[best_idx]
-    print 'Best tree parameters are:'
-    print best_params
-    print 'with a validation accuracy score of', cv_score[best_idx]
+        best_idx = cv_score.argmax()
+        best_params = grid[best_idx]
+        print 'Best tree parameters are:'
+        print best_params
+        print 'with a validation accuracy score of', cv_score[best_idx]
 
-    print 'Refitting model...'
+        print 'Refitting model...'
+    else:
+        best_params = {'max_features': 45}
     X = training_set.values
     y = response.values
-    trunc_tree = TruncatedHistoryTrees(ntrees, n_jobs=njobs, **best_params).fit(X, y, n_shop)
+    trunc_tree = TruncatedHistoryTrees(ntrees, n_jobs=njobs, verbose=2, **best_params).fit(X, y, n_shop)
 
     # predict the test data
     print 'Predicting the class for the test set...'
@@ -234,7 +238,7 @@ def fit_truncated_tree(training_set, response, test_set, ntrees, n_shop):
 
 if __name__ == "__main__":
 
-    ntrees = 500
+    ntrees = 100
     do_each_category = False
 
     training_set = pd.read_hdf(data_dir + 'training_set.h5', 'df')

@@ -1,5 +1,4 @@
 import os
-import time
 import numpy as np
 import pandas as pd
 import bdtsmc
@@ -14,19 +13,15 @@ nfolds = 3
 ntrunc = 5
 
 def runSmc(args):
-    smcData, settings = args
-    time_0 = time.clock()
+    smcData, settings, do_metrics = args
     print '\nInitializing SMC\n'
     # precomputation
     (particles, param, log_weights, cache, cache_tmp) = bdtsmc.init_smc(smcData, settings)
-    time_init = time.clock() - time_0
 
     # Run smc
     print '\nRunning SMC'
     (particles, ess_itr, log_weights_itr, log_pd, particle_stats_itr_d, particles_itr_d, log_pd_islands) = \
             bdtsmc.run_smc(particles, smcData, settings, param, log_weights, cache)
-    time_method = time.clock() - time_0     # includes precomputation time
-    time_method_sans_init = time.clock() - time_0 - time_init
     
     # Printing some diagnostics
     print
@@ -57,7 +52,6 @@ def runSmc(args):
                 raise AssertionError
 
     # Evaluate
-    time_predictions_init = time.clock()
     print 'Results on training data (log predictive prob is bogus)'
     # log_predictive on training data is bogus ... you are computing something like \int_{\theta} p(data|\theta) p(\theta|data)
     if settings.weight_islands == 1:
@@ -73,23 +67,15 @@ def runSmc(args):
             pid_range_tmp = range(pid_min, pid_max+1)
             weights_prediction[pid_range_tmp] *= softmax(log_weights_itr[-1, pid_range_tmp]) 
     (pred_prob_overall_train, metrics_train) = \
-            evaluate_predictions_smc(particles, smcData, smcData['x_train'], smcData['y_train'], settings, param, weights_prediction)
+            evaluate_predictions_smc(particles, smcData, smcData['x_train'], smcData['y_train'], settings, param, weights_prediction, do_metrics)
     print '\nResults on test data'
     (pred_prob_overall_test, metrics_test) = \
-            evaluate_predictions_smc(particles, smcData, smcData['x_test'], smcData['y_test'], settings, param, weights_prediction)
-    log_prob_train = metrics_train['log_prob']
-    log_prob_test = metrics_test['log_prob']
-    if settings.optype == 'class':
-        acc_train = metrics_train['acc']
-        acc_test = metrics_test['acc']
-    else:
-        mse_train = metrics_train['mse']
-        mse_test = metrics_test['mse']
-    time_prediction = (time.clock() - time_predictions_init)
+            evaluate_predictions_smc(particles, smcData, smcData['x_test'], smcData['y_test'], settings, param, weights_prediction, do_metrics)
 
-    return pred_prob_overall_test, particles, param, weights_prediction
+    #return pred_prob_overall_test, particles, param, weights_prediction
+    return pred_prob_overall_test, 
 
-def evaluate_predictions_smc(particles, data, x, y, settings, param, weights):
+def evaluate_predictions_smc(particles, data, x, y, settings, param, weights, do_metrics=True):
     if settings.optype == 'class':
         pred_prob_overall = np.zeros((x.shape[0], data['n_class']))
     else:
@@ -111,28 +97,28 @@ def evaluate_predictions_smc(particles, data, x, y, settings, param, weights):
             pred_mean_overall += weights_norm[pid] * pred_all['pred_mean']
     if settings.debug == 1:
         check_if_zero(np.mean(np.sum(pred_prob_overall, axis=1) - 1))
-    if settings.optype == 'class':
-        metrics = compute_test_metrics_classification(y, pred_prob_overall)
-    else:
-        metrics = compute_test_metrics_regression(y, pred_mean_overall, pred_prob_overall)
-    if settings.verbose >= 1:
+    if do_metrics:
         if settings.optype == 'class':
-            print 'Averaging over all particles, accuracy = %f, log predictive = %f' % (metrics['acc'], metrics['log_prob'])
+            metrics = compute_test_metrics_classification(y, pred_prob_overall)
         else:
-            print 'Averaging over all particles, mse = %f, log predictive = %f' % (metrics['mse'], metrics['log_prob'])
+            metrics = compute_test_metrics_regression(y, pred_mean_overall, pred_prob_overall)
+        if settings.verbose >= 1:
+            if settings.optype == 'class':
+                print 'Averaging over all particles, accuracy = %f, log predictive = %f' % (metrics['acc'], metrics['log_prob'])
+            else:
+                print 'Averaging over all particles, mse = %f, log predictive = %f' % (metrics['mse'], metrics['log_prob'])
+    else:
+        metrics = None
+
     return (pred_prob_overall, metrics)
 
     
-def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
+def fit_truncated_tree(training_set, response, n_shop, smcSettings):
 
     # this is used for cross-validation split, we'll need a separate one
     # for the actual test data.  for that one, use no CV folds and as many
     # truncation splits as cores available.
-    test_cust_ids = test_set.index.get_level_values(0).unique()
     train_cust_ids = training_set.index.get_level_values(0).unique()
-
-    y_predict = pd.DataFrame(data=np.zeros((len(test_cust_ids), 3), dtype=np.int), index=test_cust_ids,
-                             columns=['MajorityVote', 'AverageProb', 'LastObsValue'])
 
     # get CV split
     folds = KFold(len(train_cust_ids), n_folds=nfolds)
@@ -142,11 +128,10 @@ def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
 
     print 'Using features', training_set.columns
 
-    allProbs = {}
+    results = []
     allData = []
     # Separate on customers
     for nFold, (train, validate) in enumerate(folds):
-        allProbs[nFold] = []
         
         # reset the index here to include the shopping point as a predictor
         X_train = training_set.ix[train_cust_ids[train]].values
@@ -183,21 +168,17 @@ def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
             smcData["n_test"]    = smcData["x_test"].shape[0]
 
             if domultiprocessing:
-                allData.append((smcData, smcSettings))
+                allData.append((smcData, smcSettings, True))
             else:
-                allProbs[nFold].append(runSmc((smcData, smcSettings)))
+                results.append(runSmc((smcData, smcSettings, True)))
                 
     if domultiprocessing:
         results = pool.map(runSmc, allData)
-        idx = 0
-        for nFold, (train, validate) in enumerate(folds):
-            for i in range(ntrunc):
-                allProbs[nFold].append(results[idx])
-                idx += 1
+        del allData
 
     for nFold, (train, validate) in enumerate(folds):
         y_val = response.ix[train_cust_ids[validate]].values
-        probs = np.array([x[0] for x in allProbs[nFold]])
+        probs = np.array([x[0] for x in results[nFold*ntrunc:(nFold+1)*ntrunc]])
         psum  = np.sum(probs, axis=0)
         idx   = np.argsort(psum)[:,-1]
         ntot  = len(idx)
@@ -205,18 +186,81 @@ def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
         print "Fold %d: Average over truncated runs yields success rate %d/%d = %.3f" % (nFold, nmat, ntot, 1.0*nmat/ntot)
 
     #import pdb; pdb.set_trace()
+
+def fit_truncated_tree_submit(training_set, response, test_set, n_shop, smcSettings):
+
+    # this is used for cross-validation split, we'll need a separate one
+    # for the actual test data.  for that one, use no CV folds and as many
+    # truncation splits as cores available.
+
+    test_cust_ids = test_set.index.get_level_values(0).unique()
+    n_shop_test = np.asarray([test_set.ix[cid].index[-1] for cid in test_cust_ids])
+
+    train_cust_ids = training_set.index.get_level_values(0).unique()
+    training_set = training_set.reset_index(level=1)
+    print 'Using features', training_set.columns
+
+    X_train = training_set.values
+    y_train = response.values
+    X_val   = test_set.values
+
+    # ACB, hopefully not necessary
+    X_train[np.where(X_train == False)] = 0.01
+    X_train[np.where(X_train == True)] = 0.99
+    X_train[np.where(0*X_train != 0)] = 0.0
+    X_val[np.where(X_val == False)] = 0.01
+    X_val[np.where(X_val == True)] = 0.99
+    X_val[np.where(0*X_val != 0)] = 0.0
+
+    results = []
+    allData = []
+    for i in range(ntrunc):
+        trunc_idx_train = get_truncated_shopping_indices(n_shop)
+        trunc_idx_test = get_truncated_shopping_indices(n_shop_test)
+
+        # Do it!
+        smcData = {}
+        smcData["x_train"]   = X_train[trunc_idx_train].astype(np.float)
+        smcData["y_train"]   = y_train
+        smcData["n_train"]   = smcData["x_train"].shape[0]
+        smcData["n_dim"]     = smcData["x_train"].shape[1]
+        smcData["n_class"]   = 2304
+        smcData["is_sparse"] = False
+        smcData["x_test"]    = X_val[trunc_idx_test].astype(np.float)
+        smcData["y_test"]    = None
+        smcData["n_test"]    = smcData["x_test"].shape[0]
+
+        if domultiprocessing:
+            allData.append((smcData, smcSettings, False))
+        else:
+            results.append(runSmc((smcData, smcSettings, False)))
+
+    if domultiprocessing:
+        results = pool.map(runSmc, allData)
+        del allData
+
+    import pdb; pdb.set_trace()
+    probs = np.array([x[0] for x in results])
+    psum  = np.sum(probs, axis=0)
+    idx   = np.argsort(psum)[:,-1]
+    rmap  = make_response_map()
+    irmap = {v:k for k, v in rmap.items()}
+    response_test = [irmap[x] for x in idx]
+    for cid,resp in zip(test_cust_ids, response_test): print "%s,%s" % (cid,resp)
+    return idx
     
 if __name__ == "__main__":
     if os.environ["HOST"] == "magneto.astro.washington.edu":
-        njobs = max(27, nfolds*ntrunc)
+        njobs = min(27, nfolds*ntrunc)
         print "MULTIPROCESSING %d" % (njobs)
         domultiprocessing = True
         pool = multiprocessing.Pool(njobs)
         pool.map(int, range(njobs))
     elif os.environ["HOST"] == "darkstar.astro.washington.edu":
+        ntrunc = 3
         njobs = 7
         print "MULTIPROCESSING %d" % njobs
-        domultiprocessing = True
+        domultiprocessing = False
         pool = multiprocessing.Pool(njobs)
         pool.map(int, range(njobs))
     else:
@@ -230,6 +274,7 @@ if __name__ == "__main__":
 
     settings = bdtsmc.process_command_line()
     settings.debug = 0
+    settings.alpha = 5.0
     settings.optype = "class"
     settings.n_islands = max(1, settings.n_particles // 100) # Want at least 100 particles per island
     settings.grow = "next" # nodewise
@@ -258,7 +303,7 @@ if __name__ == "__main__":
     test_set['time'] = np.cos(test_set['time'] * np.pi / 12.0)
 
     # train one big model by not treating the categories as independent
-    tstart = time.clock()
-    fit_truncated_tree(training_set, response, test_set, n_shop, settings)
-    tend = time.clock()
-    print '\n', 'Training took', (tend - tstart) / 3600.0, 'hours.', '\n'
+    if os.environ["HOST"] == "darkstar.astro.washington.edu":
+        fit_truncated_tree_submit(training_set, response, test_set, n_shop, settings)
+    else:
+        fit_truncated_tree(training_set, response, n_shop, settings)

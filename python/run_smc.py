@@ -10,28 +10,21 @@ import multiprocessing
 from utils import logsumexp, softmax, check_if_zero
 from tree_utils import compute_test_metrics_classification, evaluate_predictions_fast
 
-njobs = 8
-pool = multiprocessing.Pool(njobs)
-pool.map(int, range(njobs))
 nfolds = 3
 ntrunc = 5
-if os.environ["HOST"] == "darkstar.astro.washington.edu":
-    domultiprocessing = True
-else:
-    domultiprocessing = False
 
 def runSmc(args):
-    smcData, smcSettings = args
+    smcData, settings = args
     time_0 = time.clock()
     print '\nInitializing SMC\n'
     # precomputation
-    (particles, param, log_weights, cache, cache_tmp) = bdtsmc.init_smc(smcData, smcSettings)
+    (particles, param, log_weights, cache, cache_tmp) = bdtsmc.init_smc(smcData, settings)
     time_init = time.clock() - time_0
 
     # Run smc
     print '\nRunning SMC'
     (particles, ess_itr, log_weights_itr, log_pd, particle_stats_itr_d, particles_itr_d, log_pd_islands) = \
-            bdtsmc.run_smc(particles, smcData, smcSettings, param, log_weights, cache)
+            bdtsmc.run_smc(particles, smcData, settings, param, log_weights, cache)
     time_method = time.clock() - time_0     # includes precomputation time
     time_method_sans_init = time.clock() - time_0 - time_init
     
@@ -80,10 +73,10 @@ def runSmc(args):
             pid_range_tmp = range(pid_min, pid_max+1)
             weights_prediction[pid_range_tmp] *= softmax(log_weights_itr[-1, pid_range_tmp]) 
     (pred_prob_overall_train, metrics_train) = \
-            evaluate_predictions_smc(particles, smcData, smcData['x_train'], smcData['y_train'], smcSettings, param, weights_prediction)
+            evaluate_predictions_smc(particles, smcData, smcData['x_train'], smcData['y_train'], settings, param, weights_prediction)
     print '\nResults on test data'
     (pred_prob_overall_test, metrics_test) = \
-            evaluate_predictions_smc(particles, smcData, smcData['x_test'], smcData['y_test'], smcSettings, param, weights_prediction)
+            evaluate_predictions_smc(particles, smcData, smcData['x_test'], smcData['y_test'], settings, param, weights_prediction)
     log_prob_train = metrics_train['log_prob']
     log_prob_test = metrics_test['log_prob']
     if settings.optype == 'class':
@@ -176,14 +169,14 @@ def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
 
             # Do it!
             smcData = {}
-            smcData["x_train"]   = X_train[trunc_idx_train].astype(np.float)[:3000,:]
-            smcData["y_train"]   = y_train[:3000]
+            smcData["x_train"]   = X_train[trunc_idx_train].astype(np.float)
+            smcData["y_train"]   = y_train
             smcData["n_train"]   = smcData["x_train"].shape[0]
             smcData["n_dim"]     = smcData["x_train"].shape[1]
             smcData["n_class"]   = 2304
             smcData["is_sparse"] = False
-            smcData["x_test"]    = X_val[trunc_idx_val].astype(np.float)[:3000,:]
-            smcData["y_test"]    = y_val[:3000]
+            smcData["x_test"]    = X_val[trunc_idx_val].astype(np.float)
+            smcData["y_test"]    = y_val
             smcData["n_test"]    = smcData["x_test"].shape[0]
 
             if domultiprocessing:
@@ -210,10 +203,19 @@ def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
     #import pdb; pdb.set_trace()
     
 if __name__ == "__main__":
+    if os.environ["HOST"] == "magneto.astro.washington.edu":
+        print "MULTIPROCESSING"
+        domultiprocessing = True
+        njobs = nfolds*ntrunc
+        pool = multiprocessing.Pool(njobs)
+        pool.map(int, range(njobs))
+    else:
+        domultiprocessing = False
+
     settings = bdtsmc.process_command_line()
     settings.debug = 0
     settings.optype = "class"
-    settings.n_particles = 10
+    settings.n_particles = 100
     settings.n_islands = max(1, settings.n_particles // 20)
     settings.proposal = "prior"
     settings.grow = "next" # nodewise
@@ -242,6 +244,6 @@ if __name__ == "__main__":
 
     # train one big model by not treating the categories as independent
     tstart = time.clock()
-    prediction, trunc_tree = fit_truncated_tree(training_set, response, test_set, n_shop, settings)
+    fit_truncated_tree(training_set, response, test_set, n_shop, settings)
     tend = time.clock()
     print '\n', 'Training took', (tend - tstart) / 3600.0, 'hours.', '\n'

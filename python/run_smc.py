@@ -208,25 +208,32 @@ def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
     
 if __name__ == "__main__":
     if os.environ["HOST"] == "magneto.astro.washington.edu":
-        print "MULTIPROCESSING"
+        njobs = max(27, nfolds*ntrunc)
+        print "MULTIPROCESSING %d" % (njobs)
         domultiprocessing = True
-        njobs = nfolds*ntrunc
         pool = multiprocessing.Pool(njobs)
         pool.map(int, range(njobs))
-        npart = 1000
+    elif os.environ["HOST"] == "darkstar.astro.washington.edu":
+        njobs = 7
+        print "MULTIPROCESSING %d" % njobs
+        domultiprocessing = True
+        pool = multiprocessing.Pool(njobs)
+        pool.map(int, range(njobs))
     else:
-        nfolds = 1
-        ntrunc = 3
+        nfolds = 3
+        ntrunc = 1
         npart = 100
         domultiprocessing = False
+
+    #settings.n_particles = npart
+    #settings.proposal = "prior" # does not perform well with many irrelevant features, also try posterior
 
     settings = bdtsmc.process_command_line()
     settings.debug = 0
     settings.optype = "class"
-    settings.n_particles = npart
     settings.n_islands = max(1, settings.n_particles // 100) # Want at least 100 particles per island
-    settings.proposal = "prior" # does not perform well with many irrelevant features, also try optimal
     settings.grow = "next" # nodewise
+    print settings
     
     training_set = pd.read_hdf(os.path.join(os.path.dirname(__file__), "../data/training_set.h5"), 'df')
     test_set = pd.read_hdf(os.path.join(os.path.dirname(__file__), "../data/test_set.h5"), 'df')

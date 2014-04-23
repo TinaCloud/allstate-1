@@ -125,6 +125,9 @@ def evaluate_predictions_smc(particles, data, x, y, settings, param, weights):
     
 def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
 
+    # this is used for cross-validation split, we'll need a separate one
+    # for the actual test data.  for that one, use no CV folds and as many
+    # truncation splits as cores available.
     test_cust_ids = test_set.index.get_level_values(0).unique()
     train_cust_ids = training_set.index.get_level_values(0).unique()
 
@@ -193,6 +196,7 @@ def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
                 idx += 1
 
     for nFold, (train, validate) in enumerate(folds):
+        y_val = response.ix[train_cust_ids[validate]].values
         probs = np.array([x[0] for x in allProbs[nFold]])
         psum  = np.sum(probs, axis=0)
         idx   = np.argsort(psum)[:,-1]
@@ -209,15 +213,19 @@ if __name__ == "__main__":
         njobs = nfolds*ntrunc
         pool = multiprocessing.Pool(njobs)
         pool.map(int, range(njobs))
+        npart = 1000
     else:
+        nfolds = 1
+        ntrunc = 3
+        npart = 100
         domultiprocessing = False
 
     settings = bdtsmc.process_command_line()
     settings.debug = 0
     settings.optype = "class"
-    settings.n_particles = 100
-    settings.n_islands = max(1, settings.n_particles // 20)
-    settings.proposal = "prior"
+    settings.n_particles = npart
+    settings.n_islands = max(1, settings.n_particles // 100) # Want at least 100 particles per island
+    settings.proposal = "prior" # does not perform well with many irrelevant features, also try optimal
     settings.grow = "next" # nodewise
     
     training_set = pd.read_hdf(os.path.join(os.path.dirname(__file__), "../data/training_set.h5"), 'df')

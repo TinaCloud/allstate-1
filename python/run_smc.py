@@ -4,15 +4,21 @@ import numpy as np
 import pandas as pd
 import bdtsmc
 from truncated_tree_ensemble import get_truncated_shopping_indices
+from create_features import make_response_map
 from sklearn.cross_validation import KFold
 import multiprocessing
+from utils import logsumexp, softmax, check_if_zero
+from tree_utils import compute_test_metrics_classification, evaluate_predictions_fast
 
 njobs = 8
 pool = multiprocessing.Pool(njobs)
 pool.map(int, range(njobs))
 nfolds = 3
 ntrunc = 5
-domultiprocessing = False
+if os.environ["HOST"] == "darkstar.astro.washington.edu":
+    domultiprocessing = True
+else:
+    domultiprocessing = False
 
 def runSmc(args):
     smcData, smcSettings = args
@@ -88,7 +94,41 @@ def runSmc(args):
         mse_test = metrics_test['mse']
     time_prediction = (time.clock() - time_predictions_init)
 
-    return pred_prob_overall_test
+    return pred_prob_overall_test, particles, param, weights_prediction
+
+def evaluate_predictions_smc(particles, data, x, y, settings, param, weights):
+    if settings.optype == 'class':
+        pred_prob_overall = np.zeros((x.shape[0], data['n_class']))
+    else:
+        pred_prob_overall = np.zeros(x.shape[0])
+        pred_mean_overall = np.zeros(x.shape[0])
+    if settings.weight_predictions:
+        weights_norm = weights
+    else:
+        weights_norm = np.ones(settings.n_particles) / settings.n_particles
+    assert(np.abs(np.sum(weights_norm) - 1) < 1e-3)
+    if settings.verbose >= 2:
+        print 'weights_norm = '
+        print weights_norm
+    for pid, p in enumerate(particles):
+        pred_all = evaluate_predictions_fast(p, x, y, data, param, settings)
+        pred_prob = pred_all['pred_prob']
+        pred_prob_overall += weights_norm[pid] * pred_prob
+        if settings.optype == 'real':
+            pred_mean_overall += weights_norm[pid] * pred_all['pred_mean']
+    if settings.debug == 1:
+        check_if_zero(np.mean(np.sum(pred_prob_overall, axis=1) - 1))
+    if settings.optype == 'class':
+        metrics = compute_test_metrics_classification(y, pred_prob_overall)
+    else:
+        metrics = compute_test_metrics_regression(y, pred_mean_overall, pred_prob_overall)
+    if settings.verbose >= 1:
+        if settings.optype == 'class':
+            print 'Averaging over all particles, accuracy = %f, log predictive = %f' % (metrics['acc'], metrics['log_prob'])
+        else:
+            print 'Averaging over all particles, mse = %f, log predictive = %f' % (metrics['mse'], metrics['log_prob'])
+    return (pred_prob_overall, metrics)
+
     
 def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
 
@@ -109,8 +149,8 @@ def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
     allProbs = {}
     allData = []
     # Separate on customers
-    for train, validate in folds:
-        allProbs[folds] = []
+    for nFold, (train, validate) in enumerate(folds):
+        allProbs[nFold] = []
         
         # reset the index here to include the shopping point as a predictor
         X_train = training_set.ix[train_cust_ids[train]].values
@@ -136,38 +176,45 @@ def fit_truncated_tree(training_set, response, test_set, n_shop, smcSettings):
 
             # Do it!
             smcData = {}
-            smcData["x_train"]   = X_train[trunc_idx_train].astype(np.float)
-            smcData["y_train"]   = y_train
+            smcData["x_train"]   = X_train[trunc_idx_train].astype(np.float)[:3000,:]
+            smcData["y_train"]   = y_train[:3000]
             smcData["n_train"]   = smcData["x_train"].shape[0]
             smcData["n_dim"]     = smcData["x_train"].shape[1]
             smcData["n_class"]   = 2304
             smcData["is_sparse"] = False
-            smcData["x_test"]    = X_val[trunc_idx_val].astype(np.float)
-            smcData["y_test"]    = y_val
+            smcData["x_test"]    = X_val[trunc_idx_val].astype(np.float)[:3000,:]
+            smcData["y_test"]    = y_val[:3000]
             smcData["n_test"]    = smcData["x_test"].shape[0]
 
             if domultiprocessing:
                 allData.append((smcData, smcSettings))
             else:
-                pred_prob_overall_test = runSmc((smcData, smcSettings))
-                allProbs[folds].append(pred_prob_overall_test)
+                allProbs[nFold].append(runSmc((smcData, smcSettings)))
                 
     if domultiprocessing:
         results = pool.map(runSmc, allData)
         idx = 0
-        for train, validate in folds:
+        for nFold, (train, validate) in enumerate(folds):
             for i in range(ntrunc):
-                allProbs[folds].append(results[idx])
+                allProbs[nFold].append(results[idx])
                 idx += 1
 
-    import pdb; pdb.set_trace()
+    for nFold, (train, validate) in enumerate(folds):
+        probs = np.array([x[0] for x in allProbs[nFold]])
+        psum  = np.sum(probs, axis=0)
+        idx   = np.argsort(psum)[:,-1]
+        ntot  = len(idx)
+        nmat  = np.sum(idx == y_val)
+        print "Fold %d: Average over truncated runs yields success rate %d/%d = %.3f" % (nFold, nmat, ntot, 1.0*nmat/ntot)
+
+    #import pdb; pdb.set_trace()
     
 if __name__ == "__main__":
     settings = bdtsmc.process_command_line()
-    settings.debug = 1
+    settings.debug = 0
     settings.optype = "class"
-    settings.n_particles = 20
-    settings.n_islands = settings.n_particles // 20
+    settings.n_particles = 10
+    settings.n_islands = max(1, settings.n_particles // 20)
     settings.proposal = "prior"
     settings.grow = "next" # nodewise
     

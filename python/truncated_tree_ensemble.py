@@ -2,7 +2,7 @@ __author__ = 'brandonkelly'
 
 import numpy as np
 from sklearn.tree import DecisionTreeClassifier
-from sklearn.ensemble.base import _partition_estimators
+#from sklearn.ensemble.base import _partition_estimators
 from sklearn.cross_validation import KFold
 from sklearn.grid_search import ParameterGrid
 from sklearn.utils import check_random_state

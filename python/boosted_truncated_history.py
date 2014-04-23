@@ -17,12 +17,59 @@ import cPickle
 import multiprocessing
 from sklearn.cross_validation import KFold
 from sklearn.metrics import accuracy_score
+from sklearn.base import BaseEstimator
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/allstate/'
 data_dir = base_dir + 'data/'
 
-njobs = 7
+njobs = 1
 ntrees = 1000
+
+
+class LastObservedValue(BaseEstimator):
+    """An estimator assigning prior probabilities based on the last observed class.
+    """
+    def __init__(self, train_set, purchased_plan, p_last):
+        self.nclasses = len(np.unique(purchased_plan))
+        self.priors = np.zeros((self.nclasses, self.nclasses))
+        shop_points = train_set.index.get_level_values(1).unique()
+        for i in range(len(p_last)):
+            spnt = i + 2
+            last_plan = train_set.xs(spnt, level=1)['planID']
+            for j in xrange(self.nclasses):
+                # note that this assumes the class labels are indexed in ascending order in the X array
+                class_counts = np.bincount(y[train_set['planID'].astype(np.bool)])
+                # priors[j, i] is fraction in class j with last observed value as class i
+                self.priors[:, i] = class_counts / float(y.shape[0])
+                self.priors[:, i] /= self.priors[:, i].sum()
+
+
+    def fit(self, X, y):
+        self.nclasses = len(self.last_obs_idx)
+        self.priors = np.zeros((self.nclasses, self.nclasses))
+        # TODO: need to make this average over the shopping history
+        for i in xrange(self.nclasses):
+            # note that this assumes the class labels are indexed in ascending order in the X array
+            class_counts = np.bincount(y[X[:, self.last_obs_idx[i]].astype(np.bool)])
+            # priors[j, i] is fraction in class j with last observed value as class i
+            self.priors[:, i] = class_counts / float(y.shape[0])
+            self.priors[:, i] /= self.priors[:, i].sum()
+
+    def predict(self, last_obs_plan):
+        if self.nclasses == 2:
+            # need to return log-odds ratio for binary classification
+            y = np.zeros(X.shape[0])
+            # log-odds of being in class 0 with class 0 as the last observed value
+            y[X[:, self.last_obs_idx[0]].astype(np.bool)] = np.log(self.priors[0, 0] / self.priors[1, 0])
+            # log-odds of being in class 0 with class 1 as the last observed value
+            y[-X[:, self.last_obs_idx[0]].astype(np.bool)] = np.log(self.priors[0, 1] / self.priors[1, 1])
+            y = y.reshape(X.shape[0], 1)
+        else:
+            y = np.zeros((X.shape[0], self.nclasses), dtype=np.float64)
+            for i in xrange(self.nclasses):
+                y[X[:, self.last_obs_idx[i]].astype(np.bool)] = self.priors[:, i]
+
+        return y
 
 
 class TruncatedHistoryGBC(GradientBoostingClassifier):
@@ -101,6 +148,8 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
         self._check_params()
 
         if not self._is_initialized():
+            if self.verbose:
+                print 'Initializing gradient boosting...'
             # init state
             self._init_state()
 
@@ -108,8 +157,13 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
             idx = get_truncated_shopping_indices(n_shop)
             self.init_.fit(X[idx], y)
 
-            # init predictions
-            y_pred = self.init_.predict(X[idx])
+            # init predictions by averaging over the shopping histories
+            n_histories = 50
+            y_pred = self.init_.fit(X[idx], y)
+            for i in xrange(n_histories):
+                idx = get_truncated_shopping_indices(n_shop)
+                y_pred += self.init_.predict(X[idx])
+            y_pred /= y_pred / (n_histories + 1.0)
             begin_at_stage = 0
         else:
             # add more estimators to fitted model

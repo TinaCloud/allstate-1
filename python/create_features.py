@@ -4,29 +4,10 @@ import pandas as pd
 import os
 import numpy as np
 import itertools
+from class_mapping import make_response_map
 
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/allstate/'
 data_dir = base_dir + 'data/'
-
-
-def make_response_map():
-    """ Construct the mapping that goes from the values of {A, B, C, D, E, F, G} to a unique integer value. """
-
-    cat_values = {'A': (0, 1, 2), 'B': (0, 1), 'C': (1, 2, 3, 4), 'D': (1, 2, 3), 'E': (0, 1), 'F': (0, 1, 2, 3),
-                  'G': (1, 2, 3, 4)}
-
-    unique_combinations = list(itertools.product(*cat_values.values()))
-
-    response_map = dict()
-    class_label = 0
-    for combo in unique_combinations:
-        identifier = ''
-        for s in combo:
-            identifier += str(s)
-        response_map[identifier] = class_label
-        class_label += 1
-
-    return response_map
 
 
 def add_static_predictors(df):

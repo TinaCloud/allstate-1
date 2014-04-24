@@ -22,7 +22,7 @@ base_dir = os.environ['HOME'] + '/Projects/Kaggle/allstate/'
 data_dir = base_dir + 'data/'
 
 njobs = multiprocessing.cpu_count() - 1
-njobs = 4
+njobs = 3
 verbose = 2
 
 MAX_INT = np.iinfo(np.int32).max
@@ -109,8 +109,8 @@ def fit_and_predict_test_plans(training_set, response, test_set, ntrees, n_shop,
 
 if __name__ == "__main__":
 
-    ntrees = 4000
-    max_features = 10
+    ntrees = 1000
+    max_features = 20
 
     training_set = pd.read_hdf(data_dir + 'training_set.h5', 'df')
     test_set = pd.read_hdf(data_dir + 'test_set.h5', 'df')

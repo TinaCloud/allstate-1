@@ -143,7 +143,7 @@ Podfile.lock
 __pychache__/
 
 # ignore csv files
-# *.csv
+*.csv
 
 #ignore data
 #data/

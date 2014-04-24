@@ -5,11 +5,10 @@ import sklearn
 import matplotlib.pyplot as plt
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble.gradient_boosting import VerboseReporter
-from sklearn.utils import check_arrays, check_random_state, column_or_1d
-from sklearn.ensemble._gradient_boosting import _random_sample_mask
+from sklearn.utils import check_arrays, check_random_state, column_or_1d, array2d
+from sklearn.ensemble._gradient_boosting import _random_sample_mask, predict_stages
 from sklearn.tree._tree import DTYPE, PresortBestSplitter, FriedmanMSE
 from truncated_tree_ensemble import get_truncated_shopping_indices
-from classify_plans_independently import LastObservedValue
 from time import time
 import pandas as pd
 import os
@@ -26,55 +25,81 @@ njobs = 1
 ntrees = 1000
 
 
-class LastObservedValue(BaseEstimator):
+class LastObservedValuePartitioned(BaseEstimator):
     """An estimator assigning prior probabilities based on the last observed class.
     """
     def __init__(self, train_set, purchased_plan, p_last):
-        self.nclasses = len(np.unique(purchased_plan))
+        p_last = p_last / p_last.sum()  # make sure probabilities sum to one
+        classes, indices, y = np.unique(purchased_plan.values, return_index=True, return_inverse=True)
+        old_to_new = dict()
+        for k in range(len(classes)):
+            # create inverse mapping that returns new class label given the old class label
+            old_to_new[str(purchased_plan.values[indices[k]])] = k
+        self.old_to_new = old_to_new
+        self.nclasses = len(classes)
+        self.classes = classes
         self.priors = np.zeros((self.nclasses, self.nclasses))
-        shop_points = train_set.index.get_level_values(1).unique()
+        new_id = pd.Series(data=y, index=purchased_plan.index)
         for i in range(len(p_last)):
+            # average over the shopping points
             spnt = i + 2
             last_plan = train_set.xs(spnt, level=1)['planID']
             for j in xrange(self.nclasses):
-                # note that this assumes the class labels are indexed in ascending order in the X array
-                class_counts = np.bincount(y[train_set['planID'].astype(np.bool)])
-                # priors[j, i] is fraction in class j with last observed value as class i
-                self.priors[:, i] = class_counts / float(y.shape[0])
-                self.priors[:, i] /= self.priors[:, i].sum()
+                class_counts = np.bincount(new_id.ix[last_plan[last_plan == classes[j]].index], minlength=len(classes))
+                # priors[i, j] is fraction in class i with last observed value as class j
+                self.priors[:, j] += p_last * class_counts / float(np.sum(class_counts))
 
+        # check for zeros along the diagonal
+        prior_diag = np.diag(self.priors)
+        prior_diag[prior_diag == 0] = prior_diag[prior_diag > 0].mean()
+        self.priors[np.diag_indices_from(prior_diag)] = prior_diag
 
     def fit(self, X, y):
-        self.nclasses = len(self.last_obs_idx)
-        self.priors = np.zeros((self.nclasses, self.nclasses))
-        # TODO: need to make this average over the shopping history
-        for i in xrange(self.nclasses):
-            # note that this assumes the class labels are indexed in ascending order in the X array
-            class_counts = np.bincount(y[X[:, self.last_obs_idx[i]].astype(np.bool)])
-            # priors[j, i] is fraction in class j with last observed value as class i
-            self.priors[:, i] = class_counts / float(y.shape[0])
-            self.priors[:, i] /= self.priors[:, i].sum()
+        return self
 
     def predict(self, last_obs_plan):
-        if self.nclasses == 2:
-            # need to return log-odds ratio for binary classification
-            y = np.zeros(X.shape[0])
-            # log-odds of being in class 0 with class 0 as the last observed value
-            y[X[:, self.last_obs_idx[0]].astype(np.bool)] = np.log(self.priors[0, 0] / self.priors[1, 0])
-            # log-odds of being in class 0 with class 1 as the last observed value
-            y[-X[:, self.last_obs_idx[0]].astype(np.bool)] = np.log(self.priors[0, 1] / self.priors[1, 1])
-            y = y.reshape(X.shape[0], 1)
-        else:
-            y = np.zeros((X.shape[0], self.nclasses), dtype=np.float64)
-            for i in xrange(self.nclasses):
-                y[X[:, self.last_obs_idx[i]].astype(np.bool)] = self.priors[:, i]
+        y_pred = np.zeros((len(last_obs_plan), self.nclasses), dtype=np.float64)
+        uplans = np.unique(last_obs_plan)
+        for up in uplans:
+            idx = np.where(last_obs_plan == up)[0]
+            new_label = self.old_to_new[up]
+            y_pred[idx] = self.priors[:, new_label]
 
-        return y
+        return y_pred
+
+
+class LastObservedValue(BaseEstimator):
+    """An estimator assigning prior probability of one based on the last observed class.
+    """
+    def __init__(self, purchased_plan):
+        classes, indices, y = np.unique(purchased_plan.values, return_index=True, return_inverse=True)
+        old_to_new = dict()
+        for k in range(len(classes)):
+            # create inverse mapping that returns new class label given the old class label
+            old_to_new[str(purchased_plan.values[indices[k]])] = k
+        self.old_to_new = old_to_new
+        self.nclasses = len(classes)
+        self.classes = classes
+
+    def fit(self, X, y):
+        return self
+
+    def predict(self, last_obs_plan):
+        # assign probability one to last observed value
+        y_pred = np.zeros((len(last_obs_plan), self.nclasses), dtype=np.float64)
+        uplans = np.unique(last_obs_plan)
+        for up in uplans:
+            idx = np.where(last_obs_plan == up)[0]
+            y_idx = self.old_to_new[up]
+            y_pred[idx, y_idx] = 1.0
+
+        return y_pred
 
 
 class TruncatedHistoryGBC(GradientBoostingClassifier):
-    def __init__(self, loss='deviance', learning_rate=0.1, n_estimators=100, subsample=0.1, min_samples_split=2,
-                 min_samples_leaf=1, max_depth=3, init=None, random_state=None, max_features=None, verbose=0):
+    def __init__(self, loss='deviance', learning_rate=0.1, n_estimators=100, subsample=0.1,
+                 min_samples_split=2, min_samples_leaf=1, max_depth=3, init=None, random_state=None, max_features=None,
+                 verbose=0):
         super(TruncatedHistoryGBC, self).__init__(loss=loss, learning_rate=learning_rate, n_estimators=n_estimators,
                                                   subsample=subsample, min_samples_split=min_samples_split,
                                                   min_samples_leaf=min_samples_leaf, max_depth=max_depth, init=init,
@@ -134,7 +159,7 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
 
         return i + 1
 
-    def fit_all(self, X, y, n_shop):
+    def fit_all(self, X, y, n_shop, last_obs_plan):
         # if not warmstart - clear the estimator state
         if not self.warm_start:
             self._clear_state()
@@ -159,10 +184,10 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
 
             # init predictions by averaging over the shopping histories
             n_histories = 50
-            y_pred = self.init_.fit(X[idx], y)
+            y_pred = self.init_.predict(last_obs_plan[idx])
             for i in xrange(n_histories):
                 idx = get_truncated_shopping_indices(n_shop)
-                y_pred += self.init_.predict(X[idx])
+                y_pred += self.init_.predict(last_obs_plan[idx])
             y_pred /= y_pred / (n_histories + 1.0)
             begin_at_stage = 0
         else:
@@ -191,17 +216,21 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
 
         return self
 
-    def fit(self, X, y, n_shop=None):
+    def fit(self, X, y, n_shop=None, last_obs_plan=None):
         try:
             n_shop is not None
         except ValueError:
             "Must supply n_shop."
+        try:
+            last_obs_plan is not None
+        except ValueError:
+            "Must supply last_obs_plan"
 
         self.classes_, y = np.unique(y, return_inverse=True)
         self.n_classes_ = len(self.classes_)
 
         # initial pass through the data
-        self.fit_all(X, y, n_shop)
+        self.fit_all(X, y, n_shop, last_obs_plan)
 
         # find where the oob score is maximized, only use this many trees
         oob_score = np.cumsum(self.oob_improvement_)
@@ -215,6 +244,76 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
         # plt.show()
 
         return self
+
+    def _init_decision_function(self, last_obs_plan):
+        score = self.init_.predict(last_obs_plan).astype(np.float64)
+        return score
+
+    def decision_function(self, X, last_obs_plan=None):
+        """Compute the decision function of ``X``.
+
+        Parameters
+        ----------
+        X : array-like of shape = [n_samples, n_features]
+            The input samples.
+
+        Returns
+        -------
+        score : array, shape = [n_samples, k]
+            The decision function of the input samples. The order of the
+            classes corresponds to that in the attribute `classes_`.
+            Regression and binary classification are special cases with
+            ``k == 1``, otherwise ``k==n_classes``.
+        """
+        try:
+            last_obs_plan is not None
+        except ValueError:
+            "must supply last_obs_plan"
+        X = array2d(X, dtype=DTYPE, order="C")
+        score = self._init_decision_function(last_obs_plan)
+        predict_stages(self.estimators_, X, self.learning_rate, score)
+        return score
+
+    def predict_proba(self, X, last_obs_plan=None):
+        """Predict class probabilities for X.
+
+        Parameters
+        ----------
+        X : array-like of shape = [n_samples, n_features]
+            The input samples.
+
+        Returns
+        -------
+        p : array of shape = [n_samples]
+            The class probabilities of the input samples. The order of the
+            classes corresponds to that in the attribute `classes_`.
+        """
+        try:
+            last_obs_plan is not None
+        except ValueError:
+            "must supply last_obs_plan"
+        score = self.decision_function(X, last_obs_plan)
+        return self._score_to_proba(score)
+
+    def predict(self, X, last_obs_plan=None):
+        """Predict class for X.
+
+        Parameters
+        ----------
+        X : array-like of shape = [n_samples, n_features]
+            The input samples.
+
+        Returns
+        -------
+        y : array of shape = [n_samples]
+            The predicted classes.
+        """
+        try:
+            last_obs_plan is not None
+        except ValueError:
+            "must supply last_obs_plan"
+        proba = self.predict_proba(X, last_obs_plan)
+        return self.classes_.take(np.argmax(proba, axis=1), axis=0)
 
 
 def validate_gbc_tree(args):
@@ -234,92 +333,58 @@ def validate_gbc_tree(args):
     return cv_score
 
 
-def fit_truncated_gbc(training_set, response, test_set, n_shop, category):
-    pool = multiprocessing.Pool(njobs)
-    pool.map(int, range(njobs))
+def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan, ntrees, n_shop, max_depth):
 
     test_cust_ids = test_set.index.get_level_values(0).unique()
-    train_cust_ids = training_set.index.get_level_values(0).unique()
 
     y_predict = pd.DataFrame(data=np.zeros((len(test_cust_ids), 2), dtype=np.int), index=test_cust_ids,
                              columns=['TruncatedGBC', 'LastObsValue'])
 
-    # get CV split
-    folds = KFold(len(train_cust_ids), n_folds=njobs)
-
-    # run over a grid of tuning parameters and choose the values that minimize the CV score
-    grid = list([1, 2, 3, 4, 5])
-
-    cv_args = []
+    print 'Using features', training_set.columns
 
     # include the shopping point as a predictor
     training_set = training_set.reset_index(level=1)
 
-    print 'Using features', training_set.columns
+    # need to get indices for last observed value
+    n_shop_test = np.asarray([test_set.ix[cid].index[-1] for cid in test_cust_ids])
 
-    last_obs_idx = []
-    for j, c in enumerate(training_set.columns):
-        if 'is_last_value_' + category in c:
-            last_obs_idx.append(j)
+    # get prior fraction truncated at each shopping point
+    shopping_counts = np.bincount(n_shop_test, minlength=1+n_shop.max())
+    p_last = shopping_counts / float(np.sum(shopping_counts[2:]))
 
-    print 'Columns corresponding to last observed value:', training_set.columns[last_obs_idx]
+    init = LastObservedValuePartitioned(training_set, response, p_last)
 
-    for train, validate in folds:
-        X_train = training_set.ix[train_cust_ids[train]].values
-        y_train = response.ix[train_cust_ids[train]].values
-        n_shop_train = n_shop[train]
-        X_val = training_set.ix[train_cust_ids[validate]].values
-        y_val = response.ix[train_cust_ids[validate]].values
+    trunc_tree = TruncatedHistoryGBC(subsample=0.015, learning_rate=0.01, n_estimators=ntrees, max_depth=max_depth,
+                                     verbose=True, init=init)
 
-        # X_val contains the entire shopping history, so we need to truncate it so it is more representative of the
-        # test set
-        n_shop_val = n_shop[validate]
-        trunc_idx = get_truncated_shopping_indices(n_shop_val)
-        X_val = X_val[trunc_idx]
-
-        cv_args.append((X_train, y_train, X_val, y_val, n_shop_train, grid, last_obs_idx))
-
-    cv_scores = pool.map(validate_gbc_tree, cv_args)
-    cv_score = np.zeros(len(cv_scores[0]))
-    for score in cv_scores:
-        cv_score += score
-    cv_score /= len(cv_scores)
-
-    print 'Individual CV scores:'
-    for k in range(len(cv_score)):
-        print grid[k], cv_score[k]
-
-    print ''
-
-    best_idx = cv_score.argmax()
-    best_params = grid[best_idx]
-    print 'Best tree parameters are:'
-    print best_params
-    print 'with a validation accuracy score of', cv_score[best_idx]
-
-    print 'Refitting model...'
-    X = training_set.values
-    y = response.values
-    trunc_tree = TruncatedHistoryGBC(max_depth=best_params).fit(X, y, n_shop)
+    training_plans = training_set['planID']
+    trunc_tree.fit(training_set.values, response.values, n_shop, training_plans)
 
     # predict the test data
     print 'Predicting the class for the test set...'
-    # need to get indices for last observed value
-    n_shop_test = np.asarray([test_set.ix[cid].index[-1] for cid in test_cust_ids])
     first_spt_idx = np.roll(np.cumsum(n_shop_test), 1)
     first_spt_idx[0] = 0
     # need the minus one here since the shopping points index starts at one and n_trunc starts at 2
     last_idx = first_spt_idx + n_shop_test - 1
-    X_test = test_set.reset_index(level=1).values
-    X_test = X_test[last_idx]
-    y_predict['TruncatedGBC'] = trunc_tree.predict(X_test)
+    test_set = test_set.reset_index(level=1)
+    test_set = test_set.iloc[last_idx]
 
-    pool.close()
+    y_predict['TruncatedGBC'] = last_test_plan
+    # need to find those customers in the test set with last observed plan among those plans in the training set
+    classes = init.classes
+    test_in_train = last_test_plan.apply(lambda x: x in classes)
+    test_set = test_set[test_in_train]
+    # override last observed plan for those customers with last observed plan in the training set
+    y_predict.ix[test_set.index, 'TruncatedGBC'] = trunc_tree.predict(test_set.values, test_set['planID'].values)
+    y_predict['LastObsValue'] = last_test_plan
 
     return y_predict, trunc_tree
 
 
 if __name__ == "__main__":
+
+    ntrees = 1000
+    max_depth = 1
 
     training_set = pd.read_hdf(data_dir + 'training_set.h5', 'df')
     test_set = pd.read_hdf(data_dir + 'test_set.h5', 'df')
@@ -330,12 +395,11 @@ if __name__ == "__main__":
 
     customer_ids = training_set.index.get_level_values(0).unique()
 
-    response_columns = ['A', 'B', 'C', 'D', 'E', 'F', 'G']
-    response = training_set[training_set['record_type'] == 1][response_columns]
+    response = training_set[training_set['record_type'] == 1]['planID']
     response = response.reset_index(level=1).drop(training_set.index.names[1], axis=1)
 
     last_spt_idx = [(cid, test_set.ix[cid].index[-1]) for cid in test_set.index.get_level_values(0).unique()]
-    last_observed_value = test_set.ix[last_spt_idx][response_columns].reset_index(level=1)
+    last_observed_value = test_set.ix[last_spt_idx].reset_index(level=1)['planID']
 
     training_set = training_set[training_set['record_type'] == 0]
     n_shop = np.asarray([training_set.ix[cid].index[-1] for cid in customer_ids])
@@ -349,19 +413,15 @@ if __name__ == "__main__":
     training_set['time'] = np.cos(training_set['time'] * np.pi / 12.0)
     test_set['time'] = np.cos(test_set['time'] * np.pi / 12.0)
 
-    predictions = []
-    for category in response_columns:
-        print 'Training category', category, '...'
-        tstart = time()
-        this_prediction, trunc_gbc = fit_truncated_gbc(training_set, response[category], test_set, n_shop, category)
-        this_prediction['LastObsValue'] = last_observed_value[category]
+    tstart = time.clock()
+    prediction, trunc_gbc = fit_and_predict_test_plans(training_set, response, test_set, last_observed_value, ntrees,
+                                                       n_shop, max_depth)
+    tend = time.clock()
+    print '\n', 'Training took', (tend - tstart) / 3600.0, 'hours.', '\n'
 
-        print 'Pickling models...'
-        cPickle.dump(trunc_gbc, open(data_dir + 'models/truncated_gbc_category' + category + '.pickle', 'wb'))
+    # helpful to compare with as a sanity check
+    prediction['LastObsValue'] = last_observed_value
 
-        predictions.append(this_prediction)
-        tend = time()
-        print '\n', 'Training took', (tend - tstart) / 3600.0, 'hours.', '\n'
-
-    predictions = pd.concat(predictions, axis=1, keys=response_columns)
-    predictions.to_hdf(data_dir + 'truncated_gbc_independent_predictions.h5', 'df')
+    print 'Pickling models...'
+    cPickle.dump(trunc_gbc, open(data_dir + 'models/truncated_gbc_max_depth' + str(max_depth) + '.pickle', 'wb'))
+    prediction.to_hdf(data_dir + 'truncated_gbc_predictions_max_depth' + str(max_depth) + '.h5', 'df')

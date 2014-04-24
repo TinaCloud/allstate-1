@@ -3,14 +3,14 @@ import numpy as np
 import pandas as pd
 import bdtsmc
 from truncated_tree_ensemble import get_truncated_shopping_indices
-from create_features import make_response_map
+from class_mapping import make_response_map, inverse_response_map
 from sklearn.cross_validation import KFold
 import multiprocessing
 from utils import logsumexp, softmax, check_if_zero
 from tree_utils import compute_test_metrics_classification, evaluate_predictions_fast
 
 nfolds = 3
-ntrunc = 5
+ntrunc = 50
 
 def runSmc(args):
     smcData, settings, do_metrics = args
@@ -194,7 +194,6 @@ def fit_truncated_tree_submit(training_set, response, test_set, n_shop, smcSetti
     # truncation splits as cores available.
 
     test_cust_ids = test_set.index.get_level_values(0).unique()
-    n_shop_test = np.asarray([test_set.ix[cid].index[-1] for cid in test_cust_ids])
 
     train_cust_ids = training_set.index.get_level_values(0).unique()
     training_set = training_set.reset_index(level=1)
@@ -202,7 +201,9 @@ def fit_truncated_tree_submit(training_set, response, test_set, n_shop, smcSetti
 
     X_train = training_set.values
     y_train = response.values
-    X_val   = test_set.values
+
+    # Grab the last shopping point for each customer
+    X_val   = np.array([test_set[test_set.index.get_level_values(0) == x][:-1].values[0] for x in test_cust_ids])
 
     # ACB, hopefully not necessary
     X_train[np.where(X_train == False)] = 0.01
@@ -216,7 +217,6 @@ def fit_truncated_tree_submit(training_set, response, test_set, n_shop, smcSetti
     allData = []
     for i in range(ntrunc):
         trunc_idx_train = get_truncated_shopping_indices(n_shop)
-        trunc_idx_test = get_truncated_shopping_indices(n_shop_test)
 
         # Do it!
         smcData = {}
@@ -226,7 +226,7 @@ def fit_truncated_tree_submit(training_set, response, test_set, n_shop, smcSetti
         smcData["n_dim"]     = smcData["x_train"].shape[1]
         smcData["n_class"]   = 2304
         smcData["is_sparse"] = False
-        smcData["x_test"]    = X_val[trunc_idx_test].astype(np.float)
+        smcData["x_test"]    = X_val.astype(np.float)
         smcData["y_test"]    = None
         smcData["n_test"]    = smcData["x_test"].shape[0]
 
@@ -243,11 +243,15 @@ def fit_truncated_tree_submit(training_set, response, test_set, n_shop, smcSetti
     probs = np.array([x[0] for x in results])
     psum  = np.sum(probs, axis=0)
     idx   = np.argsort(psum)[:,-1]
-    rmap  = make_response_map()
-    irmap = {v:k for k, v in rmap.items()}
-    response_test = [irmap[x] for x in idx]
-    for cid,resp in zip(test_cust_ids, response_test): print "%s,%s" % (cid,resp)
-    return idx
+    irmap = inverse_response_map()
+    #rmap  = make_response_map()
+    #irmap = {v:k for k, v in rmap.items()}
+    response_test = [irmap[str(x)] for x in idx]
+    buff = open("p%d.submit" % (os.getpid()), "w")
+    buff.write("customer_ID,plan\n")
+    for cid,resp in zip(test_cust_ids, response_test): buff.write("%s,%s\n" % (cid,resp))
+    buff.close()
+
     
 if __name__ == "__main__":
     if os.environ["HOST"] == "magneto.astro.washington.edu":

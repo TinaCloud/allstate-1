@@ -36,34 +36,46 @@ class LastObservedValuePartitioned(BaseEstimator):
             # create inverse mapping that returns new class label given the old class label
             old_to_new[str(purchased_plan.values[indices[k]])] = k
         self.old_to_new = old_to_new
-        self.nclasses = len(classes)
+        self.nclasses_purchased = len(classes)
+        self.nclasses = np.max(purchased_plan)
         self.classes = classes
-        self.priors = np.zeros((self.nclasses, self.nclasses))
+        self.priors = np.zeros((self.nclasses_purchased, self.nclasses))
         new_id = pd.Series(data=y, index=purchased_plan.index)
         for i in range(len(p_last)):
             # average over the shopping points
             spnt = i + 2
             last_plan = train_set.xs(spnt, level=1)['planID']
             for j in xrange(self.nclasses):
-                class_counts = np.bincount(new_id.ix[last_plan[last_plan == classes[j]].index], minlength=len(classes))
-                # priors[i, j] is fraction in class i with last observed value as class j
-                self.priors[:, j] += p_last * class_counts / float(np.sum(class_counts))
+                class_counts = np.bincount(new_id.ix[last_plan[last_plan == j].index], minlength=len(classes))
+                # priors[k, j] is fraction in class k (new label) with last observed value as class j (old label)
+                if np.sum(class_counts) > 0:
+                    self.priors[:, j] += p_last[i] * class_counts / float(np.sum(class_counts))
 
-        # check for zeros along the diagonal
-        prior_diag = np.diag(self.priors)
-        prior_diag[prior_diag == 0] = prior_diag[prior_diag > 0].mean()
-        self.priors[np.diag_indices_from(prior_diag)] = prior_diag
+        # make sure there is always non-zero probability in going from last observed plan -> purchased plan
+        prior_last_obs = np.zeros(self.nclasses_purchased)
+        for j in range(self.nclasses_purchased):
+            olabel = classes[j]
+            nlabel = self.old_to_new[str(olabel)]
+            prior_last_obs[j] = self.priors[nlabel, olabel]
+
+        prior_last_obs[prior_last_obs == 0] = prior_last_obs[prior_last_obs > 0].mean()
+
+        for j in range(self.nclasses_purchased):
+            olabel = classes[j]
+            nlabel = self.old_to_new[str(olabel)]
+            self.priors[nlabel, olabel] = prior_last_obs[j]
+
+        self.priors /= self.priors.sum(axis=0)  # normalize so probabilities sum to one
 
     def fit(self, X, y):
         return self
 
     def predict(self, last_obs_plan):
-        y_pred = np.zeros((len(last_obs_plan), self.nclasses), dtype=np.float64)
-        uplans = np.unique(last_obs_plan)
+        y_pred = np.zeros((len(last_obs_plan), self.nclasses_purchased))
+        uplans = np.unique(last_obs_plan.values)  # last observed plan uses old labeling
         for up in uplans:
             idx = np.where(last_obs_plan == up)[0]
-            new_label = self.old_to_new[up]
-            y_pred[idx] = self.priors[:, new_label]
+            y_pred[idx] = self.priors[:, up]
 
         return y_pred
 
@@ -350,7 +362,7 @@ def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan,
 
     # get prior fraction truncated at each shopping point
     shopping_counts = np.bincount(n_shop_test, minlength=1+n_shop.max())
-    p_last = shopping_counts / float(np.sum(shopping_counts[2:]))
+    p_last = shopping_counts[2:] / float(np.sum(shopping_counts[2:]))
 
     init = LastObservedValuePartitioned(training_set, response, p_last)
 
@@ -383,15 +395,17 @@ def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan,
 
 if __name__ == "__main__":
 
-    ntrees = 1000
-    max_depth = 1
+    ntrees = 100
+    max_depth = 2
 
     training_set = pd.read_hdf(data_dir + 'training_set.h5', 'df')
     test_set = pd.read_hdf(data_dir + 'test_set.h5', 'df')
 
     # for testing, reduce number of customers
-    # customer_ids = training_set.index.get_level_values(0).unique()
-    # training_set = training_set.select(lambda x: x[0] < customer_ids[1000], axis=0)
+    customer_ids = training_set.index.get_level_values(0).unique()
+    training_set = training_set.select(lambda x: x[0] < customer_ids[5000], axis=0)
+    customer_ids = test_set.index.get_level_values(0).unique()
+    test_set = test_set.select(lambda x: x[0] < customer_ids[5000], axis=0)
 
     customer_ids = training_set.index.get_level_values(0).unique()
 

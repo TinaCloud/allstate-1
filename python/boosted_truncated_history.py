@@ -37,7 +37,7 @@ class LastObservedValuePartitioned(BaseEstimator):
             old_to_new[str(purchased_plan.values[indices[k]])] = k
         self.old_to_new = old_to_new
         self.nclasses_purchased = len(classes)
-        self.nclasses = np.max(purchased_plan)
+        self.nclasses = np.max(purchased_plan) + 1  # plan labels start at zero
         self.classes = classes
         self.priors = np.zeros((self.nclasses_purchased, self.nclasses))
         new_id = pd.Series(data=y, index=purchased_plan.index)
@@ -65,7 +65,9 @@ class LastObservedValuePartitioned(BaseEstimator):
             nlabel = self.old_to_new[str(olabel)]
             self.priors[nlabel, olabel] = prior_last_obs[j]
 
-        self.priors /= self.priors.sum(axis=0)  # normalize so probabilities sum to one
+        prior_norm = self.priors.sum(axis=0)
+        prior_norm[prior_norm == 0] = 1.0  # don't divide by zero
+        self.priors /= prior_norm  # normalize so probabilities sum to one
 
     def fit(self, X, y):
         return self

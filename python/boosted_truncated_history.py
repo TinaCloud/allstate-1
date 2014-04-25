@@ -8,8 +8,9 @@ from sklearn.ensemble.gradient_boosting import VerboseReporter
 from sklearn.utils import check_arrays, check_random_state, column_or_1d, array2d
 from sklearn.ensemble._gradient_boosting import _random_sample_mask, predict_stages
 from sklearn.tree._tree import DTYPE, PresortBestSplitter, FriedmanMSE
+from sklearn.metrics import zero_one_loss
 from truncated_tree_ensemble import get_truncated_shopping_indices
-from time import time
+import time
 import pandas as pd
 import os
 import cPickle
@@ -21,9 +22,6 @@ from sklearn.base import BaseEstimator
 base_dir = os.environ['HOME'] + '/Projects/Kaggle/allstate/'
 data_dir = base_dir + 'data/'
 
-njobs = 1
-ntrees = 1000
-
 
 class LastObservedValuePartitioned(BaseEstimator):
     """An estimator assigning prior probabilities based on the last observed class.
@@ -34,10 +32,11 @@ class LastObservedValuePartitioned(BaseEstimator):
         old_to_new = dict()
         for k in range(len(classes)):
             # create inverse mapping that returns new class label given the old class label
-            old_to_new[str(purchased_plan.values[indices[k]])] = k
+            old_to_new[str(np.asscalar(purchased_plan.values[indices[k]]))] = k
         self.old_to_new = old_to_new
         self.nclasses_purchased = len(classes)
-        self.nclasses = np.max(purchased_plan) + 1  # plan labels start at zero
+        self.nclasses = np.max(purchased_plan.values) + 1  # plan labels start at zero
+        self.nclasses = 2304
         self.classes = classes
         self.priors = np.zeros((self.nclasses_purchased, self.nclasses))
         new_id = pd.Series(data=y, index=purchased_plan.index)
@@ -153,6 +152,13 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
             old_oob_score = loss_(y[~sample_mask],
                                   y_pred[~sample_mask])
 
+            y_prob = self._score_to_proba(y_pred[~sample_mask])
+            y_hat = y_prob.argmax(axis=1)
+            old_oob_score = zero_one_loss(y[~sample_mask], y_hat)
+
+            if i == 0:
+                print 'First 0-1 loss:', old_oob_score
+
             # fit next stage of trees
             y_pred = self._fit_stage(i, X_trunc, y, y_pred, sample_mask,
                                      criterion, splitter, random_state)
@@ -163,6 +169,9 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
                                              y_pred[sample_mask])
                 self._oob_score_[i] = loss_(y[~sample_mask],
                                             y_pred[~sample_mask])
+                y_prob = self._score_to_proba(y_pred[~sample_mask])
+                y_hat = y_prob.argmax(axis=1)
+                self._oob_score_[i] = zero_one_loss(y[~sample_mask], y_hat)
                 self.oob_improvement_[i] = old_oob_score - self._oob_score_[i]
             else:
                 # no need to fancy index w/ no subsampling
@@ -199,10 +208,16 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
             # init predictions by averaging over the shopping histories
             n_histories = 50
             y_pred = self.init_.predict(last_obs_plan[idx])
+            print 'First 0-1 loss:', zero_one_loss(y, y_pred.argmax(axis=1))
             for i in xrange(n_histories):
                 idx = get_truncated_shopping_indices(n_shop)
                 y_pred += self.init_.predict(last_obs_plan[idx])
-            y_pred /= y_pred / (n_histories + 1.0)
+            y_pred /= (n_histories + 1.0)
+            # normalize to probabilities to unity
+            y_pred_norm = y_pred.sum(axis=1)
+            y_pred_norm[y_pred_norm == 0] = 1.0
+            y_pred /= y_pred_norm.reshape(len(y_pred_norm), 1)
+            print 'Initial 0-1 loss:', zero_one_loss(y, y_pred.argmax(axis=1))
             begin_at_stage = 0
         else:
             # add more estimators to fitted model
@@ -247,15 +262,20 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
         self.fit_all(X, y, n_shop, last_obs_plan)
 
         # find where the oob score is maximized, only use this many trees
-        oob_score = np.cumsum(self.oob_improvement_)
-        ntrees = oob_score.argmax() + 1
+        oob_score = self._oob_score_
+        ntrees = oob_score.argmin() + 1
         if self.verbose:
             print 'Chose', ntrees, 'based on the OOB score.'
         self.n_estimators = ntrees
         self.estimators_ = self.estimators_[:ntrees]
 
-        # plt.plot(oob_score)
-        # plt.show()
+        plt.plot(self.train_score_)
+        plt.ylabel('Training deviance loss')
+        plt.show()
+
+        plt.plot(oob_score)
+        plt.ylabel('OOB Misclassification Loss')
+        plt.show()
 
         return self
 
@@ -338,7 +358,7 @@ def validate_gbc_tree(args):
     print 'Calculating CV scores for tuning parameters:'
     for j, params in enumerate(grid):
         print j, params
-        trunc_tree = TruncatedHistoryGBC(subsample=0.015, learning_rate=0.01, n_estimators=ntrees, max_depth=params,
+        trunc_tree = TruncatedHistoryGBC(subsample=0.5, learning_rate=0.01, n_estimators=ntrees, max_depth=params,
                                          verbose=True)
         trunc_tree.fit(X_train, y_train, n_shop)
         y_predict = trunc_tree.predict(X_val)
@@ -354,11 +374,6 @@ def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan,
     y_predict = pd.DataFrame(data=np.zeros((len(test_cust_ids), 2), dtype=np.int), index=test_cust_ids,
                              columns=['TruncatedGBC', 'LastObsValue'])
 
-    print 'Using features', training_set.columns
-
-    # include the shopping point as a predictor
-    training_set = training_set.reset_index(level=1)
-
     # need to get indices for last observed value
     n_shop_test = np.asarray([test_set.ix[cid].index[-1] for cid in test_cust_ids])
 
@@ -366,12 +381,18 @@ def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan,
     shopping_counts = np.bincount(n_shop_test, minlength=1+n_shop.max())
     p_last = shopping_counts[2:] / float(np.sum(shopping_counts[2:]))
 
+    print 'Initializing estimator...'
     init = LastObservedValuePartitioned(training_set, response, p_last)
 
-    trunc_tree = TruncatedHistoryGBC(subsample=0.015, learning_rate=0.01, n_estimators=ntrees, max_depth=max_depth,
+    # include the shopping point as a predictor and remove the planID from the feature set
+    training_plans = training_set['planID']
+    training_set = training_set.reset_index(level=1).drop('planID', axis=1)
+
+    trunc_tree = TruncatedHistoryGBC(subsample=0.5, learning_rate=0.01, n_estimators=ntrees, max_depth=max_depth,
                                      verbose=True, init=init)
 
-    training_plans = training_set['planID']
+    print 'Using features', training_set.columns
+
     trunc_tree.fit(training_set.values, response.values, n_shop, training_plans)
 
     # predict the test data
@@ -388,8 +409,9 @@ def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan,
     classes = init.classes
     test_in_train = last_test_plan.apply(lambda x: x in classes)
     test_set = test_set[test_in_train]
-    # override last observed plan for those customers with last observed plan in the training set
-    y_predict.ix[test_set.index, 'TruncatedGBC'] = trunc_tree.predict(test_set.values, test_set['planID'].values)
+    # override last observed plan for those customers without last observed plan in the training set
+    test_set = test_set.drop('planID', axis=1)
+    y_predict.ix[test_set.index, 'TruncatedGBC'] = trunc_tree.predict(test_set.values, last_test_plan)
     y_predict['LastObsValue'] = last_test_plan
 
     return y_predict, trunc_tree
@@ -397,7 +419,7 @@ def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan,
 
 if __name__ == "__main__":
 
-    ntrees = 100
+    ntrees = 40
     max_depth = 2
 
     training_set = pd.read_hdf(data_dir + 'training_set.h5', 'df')
@@ -405,9 +427,9 @@ if __name__ == "__main__":
 
     # for testing, reduce number of customers
     customer_ids = training_set.index.get_level_values(0).unique()
-    training_set = training_set.select(lambda x: x[0] < customer_ids[5000], axis=0)
+    training_set = training_set.select(lambda x: x[0] < customer_ids[1000], axis=0)
     customer_ids = test_set.index.get_level_values(0).unique()
-    test_set = test_set.select(lambda x: x[0] < customer_ids[5000], axis=0)
+    test_set = test_set.select(lambda x: x[0] < customer_ids[1000], axis=0)
 
     customer_ids = training_set.index.get_level_values(0).unique()
 
@@ -420,8 +442,8 @@ if __name__ == "__main__":
     training_set = training_set[training_set['record_type'] == 0]
     n_shop = np.asarray([training_set.ix[cid].index[-1] for cid in customer_ids])
 
-    not_predictors = ['record_type', 'day', 'state', 'location', 'group_size', 'C_previous', 'planID',
-                      'most_common_plan', 'A', 'B', 'C', 'D', 'E', 'F', 'G']
+    not_predictors = ['record_type', 'day', 'state', 'location', 'group_size', 'C_previous', 'most_common_plan', 'A',
+                      'B', 'C', 'D', 'E', 'F', 'G']
     training_set = training_set.drop(not_predictors, axis=1)
     test_set = test_set.drop(not_predictors, axis=1)
 

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from sklearn.ensemble import GradientBoostingClassifier
 from sklearn.ensemble.gradient_boosting import VerboseReporter
 from sklearn.utils import check_arrays, check_random_state, column_or_1d, array2d
-from sklearn.ensemble._gradient_boosting import _random_sample_mask, predict_stages
+from sklearn.ensemble._gradient_boosting import _random_sample_mask, predict_stages, predict_stage
 from sklearn.tree._tree import DTYPE, PresortBestSplitter, FriedmanMSE
 from sklearn.cross_validation import train_test_split
 from sklearn.metrics import zero_one_loss
@@ -15,8 +15,6 @@ import time
 import pandas as pd
 import os
 import cPickle
-import multiprocessing
-from sklearn.cross_validation import KFold
 from sklearn.metrics import accuracy_score
 from sklearn.base import BaseEstimator
 
@@ -74,7 +72,7 @@ class LastObservedValuePartitioned(BaseEstimator):
 
     def predict(self, last_obs_plan):
         y_pred = np.zeros((len(last_obs_plan), self.nclasses_purchased))
-        uplans = np.unique(last_obs_plan.values)  # last observed plan uses old labeling
+        uplans = np.unique(last_obs_plan)  # last observed plan uses old labeling
         for up in uplans:
             idx = np.where(last_obs_plan == up)[0]
             y_pred[idx] = self.priors[:, up]
@@ -122,8 +120,7 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
         self.n_classes_ = 0
         self.test_score = np.zeros(self.n_estimators)
 
-    def _fit_stages(self, X, y, y_pred, random_state, begin_at_stage, n_shop, X_test, y_test, last_test_plan,
-                    n_shop_test):
+    def _fit_stages(self, X, y, y_pred, random_state, begin_at_stage, n_shop):
         n_samples = len(n_shop)
         do_oob = self.subsample < 1.0
         sample_mask = np.ones((n_samples, ), dtype=np.bool)
@@ -155,13 +152,6 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
             old_oob_score = loss_(y[~sample_mask],
                                   y_pred[~sample_mask])
 
-            y_prob = self._score_to_proba(y_pred[~sample_mask])
-            y_hat = y_prob.argmax(axis=1)
-            old_oob_score = zero_one_loss(y[~sample_mask], y_hat)
-
-            if i == 0:
-                print 'First 0-1 loss:', old_oob_score
-
             # fit next stage of trees
             y_pred = self._fit_stage(i, X_trunc, y, y_pred, sample_mask,
                                      criterion, splitter, random_state)
@@ -172,13 +162,7 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
                                              y_pred[sample_mask])
                 self._oob_score_[i] = loss_(y[~sample_mask],
                                             y_pred[~sample_mask])
-                y_prob = self._score_to_proba(y_pred[~sample_mask])
-                y_hat = y_prob.argmax(axis=1)
-                self._oob_score_[i] = zero_one_loss(y[~sample_mask], y_hat)
                 self.oob_improvement_[i] = old_oob_score - self._oob_score_[i]
-                trunc_idx = get_truncated_shopping_indices(n_shop_test)
-                y_test_pred = self.predict(X_test[trunc_idx], last_test_plan)
-                self.test_score[i] = zero_one_loss(y_test, y_test_pred)
             else:
                 # no need to fancy index w/ no subsampling
                 self.train_score_[i] = loss_(y, y_pred)
@@ -188,7 +172,7 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
 
         return i + 1
 
-    def fit_all(self, X, y, n_shop, last_obs_plan, X_test, y_test, last_plan_test, n_shop_test):
+    def fit_all(self, X, y, n_shop, last_obs_plan):
         # if not warmstart - clear the estimator state
         if not self.warm_start:
             self._clear_state()
@@ -214,16 +198,7 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
             # init predictions by averaging over the shopping histories
             n_histories = 50
             y_pred = self.init_.predict(last_obs_plan[idx])
-            print 'First 0-1 loss:', zero_one_loss(y, y_pred.argmax(axis=1))
-            for i in xrange(n_histories):
-                idx = get_truncated_shopping_indices(n_shop)
-                y_pred += self.init_.predict(last_obs_plan[idx])
-            y_pred /= (n_histories + 1.0)
-            # normalize to probabilities to unity
-            y_pred_norm = y_pred.sum(axis=1)
-            y_pred_norm[y_pred_norm == 0] = 1.0
-            y_pred /= y_pred_norm.reshape(len(y_pred_norm), 1)
-            print 'Initial 0-1 loss:', zero_one_loss(y, y_pred.argmax(axis=1))
+            print 'First training accuracy:', accuracy_score(y, y_pred.argmax(axis=1))
             begin_at_stage = 0
         else:
             # add more estimators to fitted model
@@ -239,8 +214,7 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
             self._resize_state()
 
         # fit the boosting stages
-        n_stages = self._fit_stages(X, y, y_pred, random_state, begin_at_stage, n_shop, X_test, y_test, last_plan_test,
-                                    n_shop_test)
+        n_stages = self._fit_stages(X, y, y_pred, random_state, begin_at_stage, n_shop)
         # change shape of arrays after fit (early-stopping or additional tests)
         if n_stages != self.estimators_.shape[0]:
             self.estimators_ = self.estimators_[:n_stages]
@@ -253,7 +227,7 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
         return self
 
     def fit(self, X, y, n_shop=None, last_obs_plan=None, X_test=None, y_test=None, last_plan_test=None,
-            n_shop_test=None):
+            n_shop_test=None, fix_ntrees=False):
         try:
             n_shop is not None
         except ValueError:
@@ -266,24 +240,45 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
         self.classes_, y = np.unique(y, return_inverse=True)
         self.n_classes_ = len(self.classes_)
 
+        initial_test_score = 0.0
+        n_histories = 50
+        for h in range(n_histories):
+            idx = get_truncated_shopping_indices(n_shop_test)
+            y_predict = self.classes_[self.init.predict(last_plan_test[idx]).argmax(axis=1)]
+            initial_test_score_h = accuracy_score(y_test, y_predict)
+            initial_test_score += initial_test_score_h
+        initial_test_score /= n_histories
+
         # initial pass through the data
-        self.fit_all(X, y, n_shop, last_obs_plan, X_test, y_test, last_plan_test, n_shop_test)
+        self.fit_all(X, y, n_shop, last_obs_plan)
 
-        # find where the oob score is maximized, only use this many trees
-        test_score = self.test_score
-        ntrees = test_score.argmin() + 1
-        if self.verbose:
-            print 'Chose', ntrees, 'based on the OOB score.'
-        self.n_estimators = ntrees
-        self.estimators_ = self.estimators_[:ntrees]
+        if not fix_ntrees:
+            # find where the validation score is maximized, only use this many trees
+            print 'Getting test error...'
+            test_score = np.zeros(self.n_estimators)
+            n_histories = 1
+            for h in xrange(n_histories):
+                idx = get_truncated_shopping_indices(n_shop_test)
+                y_predict = self.staged_predict(X_test[idx], last_plan_test[idx])
+                for i, yp in enumerate(y_predict):
+                    test_score[i] += accuracy_score(y_test, yp)
+            test_score /= n_histories
 
-        plt.plot(self.train_score_)
-        plt.ylabel('Training deviance loss')
-        plt.show()
+            print 'Validation error using last observed value:', initial_test_score
 
-        plt.plot(test_score)
-        plt.ylabel('Test Misclassification Loss')
-        plt.show()
+            ntrees = test_score.argmax() + 1
+            if self.verbose:
+                print 'Chose', ntrees, 'based on the validation score.'
+            self.n_estimators = ntrees
+            self.estimators_ = self.estimators_[:ntrees]
+
+            plt.plot(self.train_score_)
+            plt.ylabel('Training deviance loss')
+            plt.show()
+
+            plt.plot(test_score)
+            plt.ylabel('Accuracy on Validation Set')
+            plt.show()
 
         return self
 
@@ -357,6 +352,69 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
         proba = self.predict_proba(X, last_obs_plan)
         return self.classes_.take(np.argmax(proba, axis=1), axis=0)
 
+    def staged_decision_function(self, X, last_obs_plan=None):
+        """Compute decision function of ``X`` for each iteration.
+
+        This method allows monitoring (i.e. determine error on testing set)
+        after each stage.
+
+        Parameters
+        ----------
+        X : array-like of shape = [n_samples, n_features]
+            The input samples.
+
+        Returns
+        -------
+        score : generator of array, shape = [n_samples, k]
+            The decision function of the input samples. The order of the
+            classes corresponds to that in the attribute `classes_`.
+            Regression and binary classification are special cases with
+            ``k == 1``, otherwise ``k==n_classes``.
+        """
+        X = array2d(X, dtype=DTYPE, order="C")
+        score = self._init_decision_function(last_obs_plan)
+        for i in range(self.estimators_.shape[0]):
+            predict_stage(self.estimators_, i, X, self.learning_rate, score)
+            yield score
+
+    def staged_predict_proba(self, X, last_obs_plan=None):
+        """Predict class probabilities at each stage for X.
+
+        This method allows monitoring (i.e. determine error on testing set)
+        after each stage.
+
+        Parameters
+        ----------
+        X : array-like of shape = [n_samples, n_features]
+            The input samples.
+
+        Returns
+        -------
+        y : array of shape = [n_samples]
+            The predicted value of the input samples.
+        """
+        for score in self.staged_decision_function(X, last_obs_plan):
+            yield self._score_to_proba(score)
+
+    def staged_predict(self, X, last_obs_plan=None):
+        """Predict classes at each stage for X.
+
+        This method allows monitoring (i.e. determine error on testing set)
+        after each stage.
+
+        Parameters
+        ----------
+        X : array-like of shape = [n_samples, n_features]
+            The input samples.
+
+        Returns
+        -------
+        y : array of shape = [n_samples]
+            The predicted value of the input samples.
+        """
+        for proba in self.staged_predict_proba(X, last_obs_plan):
+            yield self.classes_.take(np.argmax(proba, axis=1), axis=0)
+
 
 def validate_gbc_tree(args):
     X_train, y_train, X_val, y_val, n_shop, grid, last_obs_idx = args
@@ -366,7 +424,7 @@ def validate_gbc_tree(args):
     print 'Calculating CV scores for tuning parameters:'
     for j, params in enumerate(grid):
         print j, params
-        trunc_tree = TruncatedHistoryGBC(subsample=0.5, learning_rate=0.01, n_estimators=ntrees, max_depth=params,
+        trunc_tree = TruncatedHistoryGBC(subsample=0.9, learning_rate=0.01, n_estimators=ntrees, max_depth=params,
                                          verbose=True)
         trunc_tree.fit(X_train, y_train, n_shop)
         y_predict = trunc_tree.predict(X_val)
@@ -389,29 +447,53 @@ def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan,
     shopping_counts = np.bincount(n_shop_test, minlength=1+n_shop.max())
     p_last = shopping_counts[2:] / float(np.sum(shopping_counts[2:]))
 
+    # do traint/test split to monitor test error as a function of number of trees
+    customer_ids = training_set.index.get_level_values(0).unique()
+    customer_idx = np.arange(0, len(customer_ids))
+    customers_train, customers_test = train_test_split(customer_idx)
+    customers_train = np.sort(customers_train)
+    customers_test = np.sort(customers_test)
+
+    print 'Doing train/validation split...'
+    validation_set = training_set.reset_index(level=1).ix[customer_ids[customers_test]]
+    validation_set = validation_set.drop('planID', axis=1)
+    validation_response = response.ix[customer_ids[customers_test]]
+    validation_plans = training_set.reset_index(level=1).ix[customer_ids[customers_test]]['planID']
+    validation_n_shop = n_shop.ix[customer_ids[customers_test]]
+
+    train_set = training_set.select(lambda x: x[0] in customer_ids[customers_train], axis=0)
+    train_response = response.ix[customer_ids[customers_train]]
+    train_plans = train_set['planID'].reset_index(level=1)
+    train_n_shop = n_shop.ix[customer_ids[customers_train]]
+
     print 'Initializing estimator...'
-    init = LastObservedValuePartitioned(training_set, response, p_last)
-
-    # include the shopping point as a predictor and remove the planID from the feature set
-    training_plans = training_set.reset_index(level=1)['planID']
-    training_set = training_set.reset_index(level=1).drop('planID', axis=1)
-
-    trunc_tree = TruncatedHistoryGBC(subsample=0.5, learning_rate=0.01, n_estimators=ntrees, max_depth=max_depth,
-                                     verbose=True, init=init)
+    init = LastObservedValuePartitioned(train_set, train_response, p_last)
+    train_set = train_set.reset_index(level=1)
 
     print 'Using features', training_set.columns
 
-    # do traint/test split to monitor test error as a function of number of trees
-    customer_ids = training_set.index.unique()
-    customer_idx = np.arange(0, len(customer_ids))
-    customers_train, customers_test = train_test_split(customer_idx)
+    trunc_tree = TruncatedHistoryGBC(subsample=0.5, learning_rate=0.00001, n_estimators=ntrees, max_depth=max_depth,
+                                     verbose=True, init=init)
 
-    trunc_tree.fit(training_set.ix[customer_ids[customers_train]].values,
-                   response.ix[customer_ids[customers_train]].values, n_shop[customers_train],
-                   training_plans.ix[customer_ids[customers_train]],
-                   training_set.ix[customer_ids[customers_test]].values,
-                   response.ix[customer_ids[customers_train]].values, training_plans.ix[customer_ids[customers_train]],
-                   n_shop[customers_test])
+    trunc_tree.fit(train_set.values, np.squeeze(train_response.values), train_n_shop.values,
+                   train_plans.values, validation_set.values, np.squeeze(validation_response.values),
+                   validation_plans.values, validation_n_shop.values)
+
+    ntrees = trunc_tree.n_estimators
+    del trunc_tree
+
+    print 'Resetting Initializer...'
+    init = LastObservedValuePartitioned(training_set, response, p_last)
+    # include the shopping point as a predictor and remove the planID from the feature set.
+    # need to do this after the constructor for LastObservedValuePartitioned
+    training_set = training_set.reset_index(level=1).drop('planID', axis=1)
+
+    print 'Refitting using all the data...'
+    trunc_tree = TruncatedHistoryGBC(subsample=0.5, learning_rate=0.01, n_estimators=ntrees, max_depth=max_depth,
+                                     verbose=True, init=init)
+    trunc_tree.fit(training_set.values, np.squeeze(response.values), n_shop.values, training_set['planID'].values,
+                   validation_set.values, np.squeeze(validation_response.values), validation_plans.values,
+                   validation_n_shop.values, fix_ntrees=True)
 
     # predict the test data
     print 'Predicting the class for the test set...'
@@ -437,17 +519,17 @@ def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan,
 
 if __name__ == "__main__":
 
-    ntrees = 40
+    ntrees = 5
     max_depth = 2
 
-    training_set = pd.read_hdf(data_dir + 'training_set.h5', 'df')
-    test_set = pd.read_hdf(data_dir + 'test_set.h5', 'df')
+    training_set = pd.read_hdf(data_dir + 'training_set_v2.h5', 'df')
+    test_set = pd.read_hdf(data_dir + 'test_set_v2.h5', 'df')
 
     # for testing, reduce number of customers
     customer_ids = training_set.index.get_level_values(0).unique()
-    training_set = training_set.select(lambda x: x[0] < customer_ids[1000], axis=0)
+    training_set = training_set.select(lambda x: x[0] < customer_ids[5000], axis=0)
     customer_ids = test_set.index.get_level_values(0).unique()
-    test_set = test_set.select(lambda x: x[0] < customer_ids[1000], axis=0)
+    test_set = test_set.select(lambda x: x[0] < customer_ids[5000], axis=0)
 
     customer_ids = training_set.index.get_level_values(0).unique()
 
@@ -459,6 +541,7 @@ if __name__ == "__main__":
 
     training_set = training_set[training_set['record_type'] == 0]
     n_shop = np.asarray([training_set.ix[cid].index[-1] for cid in customer_ids])
+    n_shop = pd.Series(n_shop, index=customer_ids)
 
     not_predictors = ['record_type', 'day', 'state', 'location', 'group_size', 'C_previous', 'most_common_plan', 'A',
                       'B', 'C', 'D', 'E', 'F', 'G']

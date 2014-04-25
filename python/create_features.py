@@ -75,6 +75,7 @@ def add_dynamic_predictors(df, last_shopping_pt):
     df['planID'] = 0  # unique identifier for plan customer looked at
     df['fraction_last_plan'] = 0.0  # fraction of time customer looked at the last plan
     df['most_common_plan'] = 0  # label of plan customer most frequently looked at
+    df['cost_diff'] = 0
     cat_values = {'A': (0, 1, 2), 'B': (0, 1), 'C': (1, 2, 3, 4), 'D': (1, 2, 3), 'E': (0, 1), 'F': (0, 1, 2, 3),
                   'G': (1, 2, 3, 4)}
 
@@ -114,6 +115,7 @@ def add_dynamic_predictors(df, last_shopping_pt):
                         category_change_count[category] += 1
                 previous_label = label
 
+            df.set_value((customer, shopping_pt), 'cost_diff', this_df.ix[shopping_pt]['cost'] - this_df.ix[1]['cost'])
             plans.append(rmap[plan_id])
             df.set_value((customer, shopping_pt), 'planID', plans[-1])
             df.set_value((customer, shopping_pt), 'fraction_last_plan', plans.count(plans[-1]) / float(len(plans)))

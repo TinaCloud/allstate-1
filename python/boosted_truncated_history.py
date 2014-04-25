@@ -8,6 +8,7 @@ from sklearn.ensemble.gradient_boosting import VerboseReporter
 from sklearn.utils import check_arrays, check_random_state, column_or_1d, array2d
 from sklearn.ensemble._gradient_boosting import _random_sample_mask, predict_stages
 from sklearn.tree._tree import DTYPE, PresortBestSplitter, FriedmanMSE
+from sklearn.cross_validation import train_test_split
 from sklearn.metrics import zero_one_loss
 from truncated_tree_ensemble import get_truncated_shopping_indices
 import time
@@ -119,8 +120,10 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
                                                   random_state=random_state, max_features=max_features, verbose=verbose)
         self.classes_ = None
         self.n_classes_ = 0
+        self.test_score = np.zeros(self.n_estimators)
 
-    def _fit_stages(self, X, y, y_pred, random_state, begin_at_stage, n_shop):
+    def _fit_stages(self, X, y, y_pred, random_state, begin_at_stage, n_shop, X_test, y_test, last_test_plan,
+                    n_shop_test):
         n_samples = len(n_shop)
         do_oob = self.subsample < 1.0
         sample_mask = np.ones((n_samples, ), dtype=np.bool)
@@ -173,6 +176,9 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
                 y_hat = y_prob.argmax(axis=1)
                 self._oob_score_[i] = zero_one_loss(y[~sample_mask], y_hat)
                 self.oob_improvement_[i] = old_oob_score - self._oob_score_[i]
+                trunc_idx = get_truncated_shopping_indices(n_shop_test)
+                y_test_pred = self.predict(X_test[trunc_idx], last_test_plan)
+                self.test_score[i] = zero_one_loss(y_test, y_test_pred)
             else:
                 # no need to fancy index w/ no subsampling
                 self.train_score_[i] = loss_(y, y_pred)
@@ -182,7 +188,7 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
 
         return i + 1
 
-    def fit_all(self, X, y, n_shop, last_obs_plan):
+    def fit_all(self, X, y, n_shop, last_obs_plan, X_test, y_test, last_plan_test, n_shop_test):
         # if not warmstart - clear the estimator state
         if not self.warm_start:
             self._clear_state()
@@ -233,7 +239,8 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
             self._resize_state()
 
         # fit the boosting stages
-        n_stages = self._fit_stages(X, y, y_pred, random_state, begin_at_stage, n_shop)
+        n_stages = self._fit_stages(X, y, y_pred, random_state, begin_at_stage, n_shop, X_test, y_test, last_plan_test,
+                                    n_shop_test)
         # change shape of arrays after fit (early-stopping or additional tests)
         if n_stages != self.estimators_.shape[0]:
             self.estimators_ = self.estimators_[:n_stages]
@@ -245,7 +252,8 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
 
         return self
 
-    def fit(self, X, y, n_shop=None, last_obs_plan=None):
+    def fit(self, X, y, n_shop=None, last_obs_plan=None, X_test=None, y_test=None, last_plan_test=None,
+            n_shop_test=None):
         try:
             n_shop is not None
         except ValueError:
@@ -259,11 +267,11 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
         self.n_classes_ = len(self.classes_)
 
         # initial pass through the data
-        self.fit_all(X, y, n_shop, last_obs_plan)
+        self.fit_all(X, y, n_shop, last_obs_plan, X_test, y_test, last_plan_test, n_shop_test)
 
         # find where the oob score is maximized, only use this many trees
-        oob_score = self._oob_score_
-        ntrees = oob_score.argmin() + 1
+        test_score = self.test_score
+        ntrees = test_score.argmin() + 1
         if self.verbose:
             print 'Chose', ntrees, 'based on the OOB score.'
         self.n_estimators = ntrees
@@ -273,8 +281,8 @@ class TruncatedHistoryGBC(GradientBoostingClassifier):
         plt.ylabel('Training deviance loss')
         plt.show()
 
-        plt.plot(oob_score)
-        plt.ylabel('OOB Misclassification Loss')
+        plt.plot(test_score)
+        plt.ylabel('Test Misclassification Loss')
         plt.show()
 
         return self
@@ -385,7 +393,7 @@ def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan,
     init = LastObservedValuePartitioned(training_set, response, p_last)
 
     # include the shopping point as a predictor and remove the planID from the feature set
-    training_plans = training_set['planID']
+    training_plans = training_set.reset_index(level=1)['planID']
     training_set = training_set.reset_index(level=1).drop('planID', axis=1)
 
     trunc_tree = TruncatedHistoryGBC(subsample=0.5, learning_rate=0.01, n_estimators=ntrees, max_depth=max_depth,
@@ -393,7 +401,17 @@ def fit_and_predict_test_plans(training_set, response, test_set, last_test_plan,
 
     print 'Using features', training_set.columns
 
-    trunc_tree.fit(training_set.values, response.values, n_shop, training_plans)
+    # do traint/test split to monitor test error as a function of number of trees
+    customer_ids = training_set.index.unique()
+    customer_idx = np.arange(0, len(customer_ids))
+    customers_train, customers_test = train_test_split(customer_idx)
+
+    trunc_tree.fit(training_set.ix[customer_ids[customers_train]].values,
+                   response.ix[customer_ids[customers_train]].values, n_shop[customers_train],
+                   training_plans.ix[customer_ids[customers_train]],
+                   training_set.ix[customer_ids[customers_test]].values,
+                   response.ix[customer_ids[customers_train]].values, training_plans.ix[customer_ids[customers_train]],
+                   n_shop[customers_test])
 
     # predict the test data
     print 'Predicting the class for the test set...'

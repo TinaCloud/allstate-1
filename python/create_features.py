@@ -139,7 +139,9 @@ def compress_dtypes(df):
 
     for c in df.columns:
         if df[c].dtype == np.int64:
-            if df[c].max() == 1:
+            if df[c].min() < 0:
+                df[c] = df[c].astype(np.int32)
+            elif df[c].max() == 1:
                 df[c] = df[c].astype(np.bool)
             elif df[c].max() < 256:
                 df[c] = df[c].astype(np.uint8)

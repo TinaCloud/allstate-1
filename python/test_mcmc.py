@@ -3,7 +3,6 @@ __author__ = 'brandonkelly'
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import gammaln
-from numba import autojit
 
 pi = [0.1, 0.25, 0.65]
 nx = 1000
@@ -120,7 +119,7 @@ def zprob_slow(categories, zvalues, idx, alpha, zalpha, nclusters):
 # run the MCMC sampler
 zvalues0 = zvalues.copy()
 
-nclusters = 3
+nclusters = 5
 nsamples = 1000
 nburn = 1000
 zvalues = np.random.multinomial(1, np.ones(nclusters) / nclusters, nx).argmax(axis=1)

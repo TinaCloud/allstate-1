@@ -55,8 +55,11 @@ double CategoricalPop::LogDensity(arma::vec alpha) {
     for (int i=0; i<ndata_; i++) {
         n_jk(zvalues(i), data_[i]-1) += 1;
     }
-    arma::uvec n_k = arma::sum(n_jk, 1);
-    double logdensity = nclusters * lgamma(alpha_sum) + (prior_shape_ - 1.0) * arma::sum(arma::log(alpha)) - alpha_sum / prior_scale_;
+    arma::uvec n_k = arma::sum(n_jk, 1); // number of data points in cluster k
+    
+    // compute log-posterior
+    double logdensity = (prior_shape_ - 1.0) * arma::sum(arma::log(alpha)) - alpha_sum / prior_scale_;  // log-prior
+    logdensity += nclusters * lgamma(alpha_sum);  // terms in log-likelihood
     for (int j=0; j<ncategories_; j++) {
         logdensity -= nclusters * lgamma(alpha(j));
         for (int k=0; k<nclusters; k++) {

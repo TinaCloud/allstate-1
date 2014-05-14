@@ -11,7 +11,6 @@
 
 // standard includes
 #include <iostream>
-#include <vector>
 #include <memory>
 
 // local includes

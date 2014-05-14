@@ -26,7 +26,7 @@ extern RandomGenerator RandGen;
 
 // constructor
 CategoricalPop::CategoricalPop(bool track, std::string label, arma::uvec data, double temperature, double prior_shape,
-                                   double prior_scale) : Parameter::Parameter(track, label, temperature), data_(data), prior_scale_(prior_scale), prior_shape_(prior_shape)
+                               double prior_scale) : Parameter<arma::vec>(track, label, temperature), data_(data), prior_scale_(prior_scale), prior_shape_(prior_shape)
 {
     ndata_ = data_.n_cols;
     ncategories_ = data_.max();
@@ -39,14 +39,18 @@ CategoricalPop::CategoricalPop(bool track, std::string label, arma::uvec data, d
 }
 
 // set the starting value by just drawing from the prior
-void CategoricalPop::SetStartingValue() {
+void CategoricalPop::SetStartingValue()
+{
     for (int j=0; j<ncategories_; j++) {
         value_(j) = RandGen.gamma(prior_shape_, prior_scale_);
     }
+    value_ = arma::log(value_);  // run sampler on log scale
 }
 
 // compute the conditional log-posterior of the population parameter of this categorical variable
-double CategoricalPop::LogDensity(arma::vec alpha) {
+double CategoricalPop::LogDensity(arma::vec alpha)
+{
+    alpha = arma::exp(alpha);  // sampling is done on log scale, so convert back to linear scale
     int nclusters = cluster_labels_->GetNclusters();
     double alpha_sum = arma::sum(alpha);
     // first count the number of times category j is in cluster k

@@ -23,20 +23,24 @@ extern RandomGenerator RandGen;
 
 // constructor
 BoundedCountsPop::BoundedCountsPop(bool track, std::string label, arma::uvec data, int nmax, double temperature, double prior_shape,
-                               double prior_scale) : Parameter::Parameter(track, label, temperature), data_(data), prior_scale_(prior_scale), prior_shape_(prior_shape), nmax_(nmax)
+                                   double prior_scale) : Parameter<arma::vec>(track, label, temperature), data_(data), prior_scale_(prior_scale), prior_shape_(prior_shape), nmax_(nmax)
 {
     ndata_ = data_.n_cols;
     value_.resize(2);
 }
 
 // set the starting value by just drawing from the prior
-void BoundedCountsPop::SetStartingValue() {
+void BoundedCountsPop::SetStartingValue()
+{
     value_(0) = RandGen.gamma(prior_shape_, prior_scale_);
     value_(1) = RandGen.gamma(prior_shape_, prior_scale_);
+    value_ = arma::log(value_);  // run MCMC sampler on the log scale
 }
 
 // compute the conditional log-posterior of the population parameter of this bounded counts variable
-double BoundedCountsPop::LogDensity(arma::vec alpha) {
+double BoundedCountsPop::LogDensity(arma::vec alpha)
+{
+    alpha = arma::exp(alpha);  // sampling is done on log scale, so convert back to linear scale
     int nclusters = cluster_labels_->GetNclusters();
     arma::uvec zvalues = cluster_labels_->Value();
     // start with contribution from prior

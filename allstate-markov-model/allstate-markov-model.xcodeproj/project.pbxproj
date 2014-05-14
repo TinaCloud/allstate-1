@@ -14,6 +14,7 @@
 		DF764EC71923D04B005B07B0 /* cluster.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764EC51923D04B005B07B0 /* cluster.cpp */; };
 		DF764ECA1923D6B0005B07B0 /* categorical.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764EC81923D6B0005B07B0 /* categorical.cpp */; };
 		DF764ECD19240717005B07B0 /* bounded_counts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764ECB19240717005B07B0 /* bounded_counts.cpp */; };
+		DF764ED01924110D005B07B0 /* unbounded_counts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764ECE1924110D005B07B0 /* unbounded_counts.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -41,6 +42,8 @@
 		DF764EC91923D6B0005B07B0 /* categorical.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = categorical.hpp; sourceTree = "<group>"; };
 		DF764ECB19240717005B07B0 /* bounded_counts.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = bounded_counts.cpp; sourceTree = "<group>"; };
 		DF764ECC19240717005B07B0 /* bounded_counts.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = bounded_counts.hpp; sourceTree = "<group>"; };
+		DF764ECE1924110D005B07B0 /* unbounded_counts.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = unbounded_counts.cpp; sourceTree = "<group>"; };
+		DF764ECF1924110D005B07B0 /* unbounded_counts.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = unbounded_counts.hpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -85,6 +88,8 @@
 				DF764EC91923D6B0005B07B0 /* categorical.hpp */,
 				DF764ECB19240717005B07B0 /* bounded_counts.cpp */,
 				DF764ECC19240717005B07B0 /* bounded_counts.hpp */,
+				DF764ECE1924110D005B07B0 /* unbounded_counts.cpp */,
+				DF764ECF1924110D005B07B0 /* unbounded_counts.hpp */,
 			);
 			path = "allstate-markov-model";
 			sourceTree = "<group>";
@@ -142,6 +147,7 @@
 			files = (
 				DF764EC71923D04B005B07B0 /* cluster.cpp in Sources */,
 				DF69DCD31922E9130046FCD6 /* main.cpp in Sources */,
+				DF764ED01924110D005B07B0 /* unbounded_counts.cpp in Sources */,
 				DF764ECA1923D6B0005B07B0 /* categorical.cpp in Sources */,
 				DF764ECD19240717005B07B0 /* bounded_counts.cpp in Sources */,
 			);

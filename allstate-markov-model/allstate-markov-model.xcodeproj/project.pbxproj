@@ -11,6 +11,9 @@
 		DF69DCD51922E9130046FCD6 /* allstate_markov_model.1 in CopyFiles */ = {isa = PBXBuildFile; fileRef = DF69DCD41922E9130046FCD6 /* allstate_markov_model.1 */; };
 		DF69DCE21922F59C0046FCD6 /* libarmadillo.4.30.2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DF69DCE11922F59C0046FCD6 /* libarmadillo.4.30.2.dylib */; };
 		DF69DCE41922F5AC0046FCD6 /* libyamcmcpp.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DF69DCE31922F5AC0046FCD6 /* libyamcmcpp.dylib */; };
+		DF764EC71923D04B005B07B0 /* cluster.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764EC51923D04B005B07B0 /* cluster.cpp */; };
+		DF764ECA1923D6B0005B07B0 /* categorical.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764EC81923D6B0005B07B0 /* categorical.cpp */; };
+		DF764ECD19240717005B07B0 /* bounded_counts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764ECB19240717005B07B0 /* bounded_counts.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -32,6 +35,12 @@
 		DF69DCD41922E9130046FCD6 /* allstate_markov_model.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = allstate_markov_model.1; sourceTree = "<group>"; };
 		DF69DCE11922F59C0046FCD6 /* libarmadillo.4.30.2.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libarmadillo.4.30.2.dylib; path = ../../../../lib/libarmadillo.4.30.2.dylib; sourceTree = "<group>"; };
 		DF69DCE31922F5AC0046FCD6 /* libyamcmcpp.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libyamcmcpp.dylib; path = ../../../../lib/libyamcmcpp.dylib; sourceTree = "<group>"; };
+		DF764EC51923D04B005B07B0 /* cluster.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = cluster.cpp; sourceTree = "<group>"; };
+		DF764EC61923D04B005B07B0 /* cluster.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = cluster.hpp; sourceTree = "<group>"; };
+		DF764EC81923D6B0005B07B0 /* categorical.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = categorical.cpp; sourceTree = "<group>"; };
+		DF764EC91923D6B0005B07B0 /* categorical.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = categorical.hpp; sourceTree = "<group>"; };
+		DF764ECB19240717005B07B0 /* bounded_counts.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = bounded_counts.cpp; sourceTree = "<group>"; };
+		DF764ECC19240717005B07B0 /* bounded_counts.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = bounded_counts.hpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -70,6 +79,12 @@
 			children = (
 				DF69DCD21922E9130046FCD6 /* main.cpp */,
 				DF69DCD41922E9130046FCD6 /* allstate_markov_model.1 */,
+				DF764EC51923D04B005B07B0 /* cluster.cpp */,
+				DF764EC61923D04B005B07B0 /* cluster.hpp */,
+				DF764EC81923D6B0005B07B0 /* categorical.cpp */,
+				DF764EC91923D6B0005B07B0 /* categorical.hpp */,
+				DF764ECB19240717005B07B0 /* bounded_counts.cpp */,
+				DF764ECC19240717005B07B0 /* bounded_counts.hpp */,
 			);
 			path = "allstate-markov-model";
 			sourceTree = "<group>";
@@ -125,7 +140,10 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DF764EC71923D04B005B07B0 /* cluster.cpp in Sources */,
 				DF69DCD31922E9130046FCD6 /* main.cpp in Sources */,
+				DF764ECA1923D6B0005B07B0 /* categorical.cpp in Sources */,
+				DF764ECD19240717005B07B0 /* bounded_counts.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -206,10 +224,12 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
-				LIBRARY_SEARCH_PATHS = (
-					"${HOME}/lib",
-					/Users/brandonkelly/lib,
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+					"${HOME}/include",
 				);
+				LIBRARY_SEARCH_PATHS = "${HOME}/lib";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -219,10 +239,12 @@
 			buildSettings = {
 				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
 				GCC_OPTIMIZATION_LEVEL = fast;
-				LIBRARY_SEARCH_PATHS = (
-					"${HOME}/lib",
-					/Users/brandonkelly/lib,
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+					"${HOME}/include",
 				);
+				LIBRARY_SEARCH_PATHS = "${HOME}/lib";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
@@ -246,6 +268,7 @@
 				DF69DCDA1922E9130046FCD6 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};

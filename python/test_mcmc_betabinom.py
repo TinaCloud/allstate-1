@@ -81,7 +81,7 @@ def zprob_slow(counts, zvalues, idx, abeta, bbeta, nmax, zalpha, nclusters):
 # run the MCMC sampler
 zvalues0 = zvalues.copy()
 
-nclusters = 3
+nclusters = 5
 nsamples = 1000
 nburn = 1000
 zvalues = np.random.multinomial(1, np.ones(nclusters) / nclusters, nx).argmax(axis=1)
@@ -126,7 +126,7 @@ for k in range(nclusters):
     print np.percentile(psamples[:, k], 2.5), np.median(psamples[:, k]), np.percentile(psamples[:, k], 97.5)
 
 plt.clf()
-for k in range(3):
+for k in range(nclusters):
     plt.hist(pi_samples[:, k], bins=50, alpha=0.25, normed=True)
 plt.xlabel(r"$\pi$")
 plt.show()
@@ -138,7 +138,7 @@ plt.ylabel('PI')
 plt.show()
 
 plt.clf()
-for k in range(3):
+for k in range(nclusters):
     plt.hist(psamples[:, k], bins=50, alpha=0.25, normed=True)
 plt.xlabel("prob")
 plt.show()

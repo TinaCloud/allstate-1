@@ -22,7 +22,7 @@ extern boost::random::mt19937 rng;
 extern RandomGenerator RandGen;
 
 // constructor
-UnboundedCountsPop::UnboundedCountsPop(bool track, std::string label, arma::uvec data, double temperature,
+UnboundedCountsPop::UnboundedCountsPop(bool track, std::string label, arma::uvec& data, double temperature,
                                        double prior_ashape, double prior_ascale, double prior_rshape, double prior_rscale) :
                                         Parameter<arma::vec>(track, label, temperature), data_(data), prior_ascale_(prior_ascale),
                                         prior_ashape_(prior_ashape), prior_rscale_(prior_rscale), prior_rshape_(prior_rshape)
@@ -32,12 +32,13 @@ UnboundedCountsPop::UnboundedCountsPop(bool track, std::string label, arma::uvec
 }
 
 // set the starting value by just drawing from the prior
-void UnboundedCountsPop::SetStartingValue()
+arma::vec UnboundedCountsPop::StartingValue()
 {
-    value_(0) = RandGen.gamma(prior_ashape_, prior_ascale_);
-    value_(1) = RandGen.gamma(prior_ashape_, prior_ascale_);
-    value_(2) = RandGen.gamma(prior_rshape_, prior_rscale_);
-    value_ = arma::log(value_); // convert to log-scale for sampling
+    arma::vec theta(3);
+    theta(0) = RandGen.gamma(prior_ashape_, prior_ascale_);
+    theta(1) = RandGen.gamma(prior_ashape_, prior_ascale_);
+    theta(2) = RandGen.gamma(prior_rshape_, prior_rscale_);
+    return arma::log(theta); // convert to log-scale for sampling
 }
 
 // compute the conditional log-posterior of the population parameter of this bounded counts variable
@@ -61,7 +62,7 @@ double UnboundedCountsPop::LogDensity(arma::vec alpha)
         logdensity += lgamma(alpha(0) + counts_sum) + lgamma(alpha(1) + n_k * alpha(2)) -
             lgamma(alpha(0) + alpha(1) + n_k * alpha(2) + counts_sum);
         for (int i=0; i<n_k; i++) {
-            logdensity += lgamma(counts(cluster_idx(i)) + alpha(2)) - lgamma(counts(cluster_idx(i)) + 1.0);
+            logdensity += lgamma(data_(cluster_idx(i)) + alpha(2)) - lgamma(data_(cluster_idx(i)) + 1.0);
         }
     }
     

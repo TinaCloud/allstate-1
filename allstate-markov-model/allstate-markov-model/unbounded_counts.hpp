@@ -24,16 +24,16 @@ class UnboundedCountsPop : public Parameter<arma::vec> {
     double prior_rshape_; // shape parameter for gamma prior on number of failures, r
     double prior_rscale_;
     int ndata_; // the number of data points
-    arma::uvec data_; // the observed counts, a vector with ndata elements containing values 0, ..., nmax.
+    arma::uvec& data_; // the observed counts, a vector with ndata elements containing values 0, ..., nmax.
     std::shared_ptr<ClusterLabels> cluster_labels_; // labels specifying which cluster each data point belongs to
     
 public:
-    UnboundedCountsPop(bool track, std::string label, arma::uvec data, double temperature=1.0, double prior_ashape=2.0,
+    UnboundedCountsPop(bool track, std::string label, arma::uvec& data, double temperature=1.0, double prior_ashape=2.0,
                        double prior_ascale=0.5, double prior_rshape=2.0, double prior_rscale=20.0);
     
     double LogDensity(arma::vec alpha);
     
-    void SetStartingValue();
+    arma::vec StartingValue();
     
     void SetClusterLabels(std::shared_ptr<ClusterLabels> labels) {
         cluster_labels_ = labels;

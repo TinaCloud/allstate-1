@@ -19,14 +19,15 @@
 class ClusterLabels;
 
 class BoundedCountsPop : public Parameter<arma::vec> {
-    double prior_shape_; // shape parameter for gamma prior
-    double prior_scale_; // scale parameter for gamma prior. prior expectation is prior_shape_ * prior_scale_
-    int ndata_; // the number of data points
-    int nmax_; // the maximum number of counts
     arma::uvec& data_; // the observed counts, a vector with ndata elements containing values 0, ..., nmax.
     std::shared_ptr<ClusterLabels> cluster_labels_; // labels specifying which cluster each data point belongs to
     
 public:
+    double prior_shape; // shape parameter for gamma prior
+    double prior_scale; // scale parameter for gamma prior. prior expectation is prior_shape_ * prior_scale_
+    int ndata; // the number of data points
+    int nmax; // the maximum number of counts
+    
     BoundedCountsPop(bool track, std::string label, arma::uvec& data, int nmax, double temperature=1.0, double prior_shape=2.0,
                      double prior_scale=0.5);
     

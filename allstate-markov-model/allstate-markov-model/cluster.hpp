@@ -19,10 +19,10 @@
 #include "bounded_counts.hpp"
 #include "unbounded_counts.hpp"
 
+// return the logarithm of the Beta function
+double lbeta(double x, double y);
+
 class ClusterLabels : public Parameter<arma::uvec> {
-    int ndata_;  // number of data points
-    int nclusters_;  // number of clusters
-    double prior_concentration_;  // the concentration parameter for the symmetric dirichlet prior on the cluster weights
     arma::uvec cluster_counts_;  // number of data points occupying each cluster
     std::vector<arma::umat> category_counts_;  // number of data points occupying each cluster and category for each cateogorical
     
@@ -33,15 +33,36 @@ class ClusterLabels : public Parameter<arma::uvec> {
     // std::vector<std::shared_ptr<TransitionMatrix> > transition_matrix_; // markov transition matrix parameter, one per cluster
     
 public:
+    int ndata;  // number of data points
+    int nclusters;  // number of clusters
+    double prior_concentration;  // the concentration parameter for the symmetric dirichlet prior on the cluster weights
+
     ClusterLabels(bool track, std::string label, int ndata, int nclusters, double prior_concentration=1.0, double temperature=1.0);
     
     arma::uvec RandomPosterior();
     
+    // add in the contribution to the conditional log-posterior from p(Z_i=k|Z_j, j \neq i)
+    void AddMarginalContribution(arma::vec& log_zprob);
+    
+    // add in the contribution to the conditional log-posterior from the categorical data
+    void AddCategoricalContribution(arma::vec& log_zprob, std::vector<int>& category);
+    
+    // add in the contribution to the conditional log-posterior from the bounded count data
+    void AddBoundedContribution(arma::vec& log_zprob, arma::uvec& zvalues, int i);
+    
+    // add in the contribution to the conditional log-posterior from the unbounded count data
+    void AddUnboundedContribution(arma::vec& log_zprob, arma::uvec& zvalues, int i);
+    
+    // add in the contribution to the conditional log-posterior from the Markov chain data
+    void AddMarkovContribution(arma::vec& log_zprob);
+    
+    // set and return the starting value
     arma::uvec StartingValue();
     
-    int GetNclusters() { return nclusters_; }
-    
+    // count the number of data points in each cluster and save internally
     void CountClusters();
+    
+    // count the number of data point in each cluster with each unique category value and save internally
     void CountCategories();
     
     // routines to add new population-level parameter objects to the parameter list.
@@ -57,6 +78,7 @@ public:
         unbounded_counts_.push_back(new_unbounded_counts);
     }
     
+    // return the number of data points in each cluster
     arma::uvec GetClusterCounts() {
         return cluster_counts_;
     }
@@ -65,6 +87,12 @@ public:
     arma::umat GetCategoryCounts(int idx) {
         return category_counts_[idx];
     }
+    
+    // recalculate the cluster and category counts after removing the indexed cluster label
+    std::vector<int> RemoveClusterLabel(unsigned int idx);
+    
+    // update the cluster and category counts with a new cluster label
+    void UpdateClusterCounts(unsigned int idx, unsigned int cluster_idx);
 };
 
 

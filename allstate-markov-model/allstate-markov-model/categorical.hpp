@@ -25,15 +25,16 @@ class ClusterLabels;
 
 class CategoricalPop : public Parameter<arma::vec>
 {
-    double prior_shape_; // shape parameter for gamma prior
-    double prior_scale_; // scale parameter for gamma prior. prior expectation is prior_shape_ * prior_scale_
-    int ndata_; // the number of data points
     int ncategories_; // the number of unique observed categories, assumes category labels are 1, 2, ..., ncategories
     arma::uvec& data_; // the observed categories, a vector with ndata elements containing ncategories possible values
     std::shared_ptr<ClusterLabels> cluster_labels_; // labels specifying which cluster each data point belongs to
     int idx_; // the index in the stack of categoricals in cluster_labels_
     
 public:
+    double prior_shape; // shape parameter for gamma prior
+    double prior_scale; // scale parameter for gamma prior. prior expectation is prior_shape_ * prior_scale_
+    int ndata; // the number of data points
+
     CategoricalPop(bool track, std::string label, arma::uvec& data, double temperature=1.0, double prior_shape=2.0,
                      double prior_scale=0.5);
     

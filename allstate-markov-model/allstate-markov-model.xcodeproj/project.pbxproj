@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		DF41C7A51925899900DD9128 /* markov_chain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF41C7A31925899900DD9128 /* markov_chain.cpp */; };
 		DF69DCD31922E9130046FCD6 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF69DCD21922E9130046FCD6 /* main.cpp */; };
 		DF69DCD51922E9130046FCD6 /* allstate_markov_model.1 in CopyFiles */ = {isa = PBXBuildFile; fileRef = DF69DCD41922E9130046FCD6 /* allstate_markov_model.1 */; };
 		DF69DCE21922F59C0046FCD6 /* libarmadillo.4.30.2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DF69DCE11922F59C0046FCD6 /* libarmadillo.4.30.2.dylib */; };
@@ -32,6 +33,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		DF41C7A31925899900DD9128 /* markov_chain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = markov_chain.cpp; sourceTree = "<group>"; };
+		DF41C7A41925899900DD9128 /* markov_chain.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = markov_chain.hpp; sourceTree = "<group>"; };
 		DF69DCCF1922E9130046FCD6 /* allstate-markov-model */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "allstate-markov-model"; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF69DCD21922E9130046FCD6 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		DF69DCD41922E9130046FCD6 /* allstate_markov_model.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = allstate_markov_model.1; sourceTree = "<group>"; };
@@ -93,6 +96,8 @@
 				DF764ECE1924110D005B07B0 /* unbounded_counts.cpp */,
 				DF764ECF1924110D005B07B0 /* unbounded_counts.hpp */,
 				DFA3B92419255DE60089126D /* run_sampler.cpp */,
+				DF41C7A31925899900DD9128 /* markov_chain.cpp */,
+				DF41C7A41925899900DD9128 /* markov_chain.hpp */,
 			);
 			path = "allstate-markov-model";
 			sourceTree = "<group>";
@@ -151,6 +156,7 @@
 				DF764EC71923D04B005B07B0 /* cluster.cpp in Sources */,
 				DF69DCD31922E9130046FCD6 /* main.cpp in Sources */,
 				DFA3B92519255DE60089126D /* run_sampler.cpp in Sources */,
+				DF41C7A51925899900DD9128 /* markov_chain.cpp in Sources */,
 				DF764ED01924110D005B07B0 /* unbounded_counts.cpp in Sources */,
 				DF764ECA1923D6B0005B07B0 /* categorical.cpp in Sources */,
 				DF764ECD19240717005B07B0 /* bounded_counts.cpp in Sources */,

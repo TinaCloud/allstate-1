@@ -92,8 +92,9 @@ void ClusterLabels::AddCategoricalContribution(arma::vec& log_zprob, std::vector
 {
     for (int k=0; k<nclusters; k++) {
         for (int l=0; l<categoricals_.size(); l++) {
-            log_zprob(k) += log(category_counts_[l](k, category[l]) + categoricals_[l]->Value()(category[l])) -
-                log(cluster_counts_(k) + arma::sum(categoricals_[l]->Value()));
+            arma::vec alpha_l = arma::exp(categoricals_[l]->Value());  // sampling values on the log scale
+            log_zprob(k) += log(category_counts_[l](k, category[l]) + alpha_l(category[l])) -
+                log(cluster_counts_(k) + arma::sum(alpha_l));
         }
     }
 }
@@ -107,7 +108,7 @@ void ClusterLabels::AddBoundedContribution(arma::vec& log_zprob, arma::uvec& zva
         std::vector<double> counts_sum(nclusters);
         std::vector<double> logbeta(nclusters);
         arma::uvec counts_l = bounded_counts_[l]->GetData();
-        arma::vec alpha = bounded_counts_[l]->Value();  // population-level parameters
+        arma::vec alpha = arma::exp(bounded_counts_[l]->Value());  // population-level parameters
         for (int k=0; k<nclusters; k++) {
             arma::uvec cluster_idx = arma::find(zvalues == k);  // find data points in this cluster
             counts_sum[k] = arma::sum(counts_l.elem(cluster_idx));
@@ -138,7 +139,7 @@ void ClusterLabels::AddUnboundedContribution(arma::vec& log_zprob, arma::uvec& z
         std::vector<double> counts_sum(nclusters);
         std::vector<double> logbeta(nclusters);
         arma::uvec counts_l = unbounded_counts_[l]->GetData();
-        arma::vec alpha = unbounded_counts_[l]->Value();  // population-level parameters
+        arma::vec alpha = arma::exp(unbounded_counts_[l]->Value());  // population-level parameters
         for (int k=0; k<nclusters; k++) {
             arma::uvec cluster_idx = arma::find(zvalues == k);  // find data points in this cluster
             counts_sum[k] = arma::sum(counts_l.elem(cluster_idx));

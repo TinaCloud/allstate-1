@@ -45,7 +45,7 @@ arma::vec UnboundedCountsPop::StartingValue()
 double UnboundedCountsPop::LogDensity(arma::vec alpha)
 {
     alpha = arma::exp(alpha); // sampling is done on log scale, but computations are done on original scale
-    int nclusters = cluster_labels_->GetNclusters();
+    int nclusters = cluster_labels_->nclusters;
     arma::uvec zvalues = cluster_labels_->Value();
 
     // start with contribution from prior

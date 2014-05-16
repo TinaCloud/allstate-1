@@ -43,7 +43,7 @@ arma::vec BoundedCountsPop::StartingValue()
 double BoundedCountsPop::LogDensity(arma::vec alpha)
 {
     alpha = arma::exp(alpha);  // sampling is done on log scale, so convert back to linear scale
-    int nclusters = cluster_labels_->GetNclusters();
+    int nclusters = cluster_labels_->nclusters;
     arma::uvec zvalues = cluster_labels_->Value();
     // start with contribution from prior
     double logdensity = (prior_shape - 1.0) * (log(alpha(0) + log(alpha(1)))) - (alpha(0) + alpha(1)) / prior_scale;

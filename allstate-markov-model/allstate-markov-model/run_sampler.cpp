@@ -15,6 +15,13 @@
 #include "categorical.hpp"
 #include "bounded_counts.hpp"
 #include "unbounded_counts.hpp"
+#include "markov_chain.hpp"
+
+Sampler build_sampler(std::vector<std::vector<int> > categorical_predictors, std::vector<std::vector<int> > bounded_counts,
+                      std::vector<std::vector<int> > unbounded_counts, unsigned int nclusters)
+{
+    
+}
 
 void run_sampler(std::vector<std::vector<int> > categorical_predictors, std::vector<std::vector<int> > bounded_counts,
                  std::vector<std::vector<int> > unbounded_counts, unsigned int nclusters, unsigned int niter, unsigned int nburn)

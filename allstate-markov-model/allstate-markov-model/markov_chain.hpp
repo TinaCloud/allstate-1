@@ -94,8 +94,8 @@ public:
     unsigned int prior_dof;  // prior degrees-of-freedom on the variance of log(gamma)
     double prior_ssqr;  // prior scale parameter on the variance of log(gamma)
     
-    TransitionHyperPrior(bool track, std::string label, double prior_mean, double prior_var, unsigned int prior_dof,
-                         double prior_ssqr, double temperature=1.0);
+    TransitionHyperPrior(bool track, std::string label, double prior_mu, double prior_kappa, unsigned int prior_nu,
+                         double prior_var0, double temperature=1.0);
     
     arma::vec StartingValue();
     

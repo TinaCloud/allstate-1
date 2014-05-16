@@ -91,7 +91,10 @@ arma::mat TransitionProbability::RandomPosterior()
  */
 
 TransitionPopulation::TransitionPopulation(bool track, std::string label, unsigned int r, unsigned int c, double temperature) :
-    Parameter<double>(track, label, temperature), row_idx(r), col_idx(c) {}
+    Parameter<double>(track, label, temperature), row_idx(r), col_idx(c)
+{
+    value_ = 0.0; // gamma = 1.0, log(gamma) = 0.0
+}
 
 // initialize by drawing from the prior
 double TransitionPopulation::StartingValue()
@@ -129,6 +132,57 @@ double TransitionPopulation::LogDensity(double log_gamma)
     
     return logdensity;
 }
+
+/*
+ *  FUNCTION DEFINITIONS FOR HYPER-PRIORS OF POPULATION-LEVEL PARAMETERS
+ */
+
+TransitionHyperPrior::TransitionHyperPrior(bool track, std::string label, double prior_mu, double prior_kappa, unsigned int prior_nu,
+                                           double prior_var0, double temperature) : Parameter<arma::vec>(track, label, temperature),
+                                            prior_mean(prior_mu), prior_ndata(prior_kappa), prior_dof(prior_nu), prior_ssqr(prior_var0) {}
+
+
+// just draw from the prior to start
+arma::vec TransitionHyperPrior::StartingValue()
+{
+    arma::vec theta(2);
+    theta(0) = RandGen.normal(prior_mean, prior_ssqr);
+    theta(1) = RandGen.scaled_inverse_chisqr(prior_dof, prior_ssqr);
+    return theta;
+}
+
+// return a draw from the conditional posterior: p(mu, var|gammas, prior parameters). this is a normal density.
+arma::vec TransitionHyperPrior::RandomPosterior()
+{
+    // compute sample variance and mean
+    double gbar = 0.0;
+    double ssqr = 0.0;
+    for (int i=0; i<gammas.size(); i++) {
+        gbar += gammas[i]->Value();
+    }
+    gbar /= gammas.size();
+    for (int i=0; i<gammas.size(); i++) {
+        ssqr += (gammas[i]->Value() - gbar) * (gammas[i]->Value() - gbar);
+    }
+    ssqr /= (gammas.size() - 1.0);
+    
+    int post_dof = prior_dof + gammas.size();
+    double post_ssqr = prior_dof * prior_ssqr + (gammas.size() - 1.0) * ssqr +
+        prior_ndata * gammas.size() / (prior_ndata + gammas.size()) * (gbar - prior_mean) * (gbar - prior_mean);
+    post_ssqr /= post_dof;
+    
+    arma::vec theta(2);
+    theta(1) = RandGen.scaled_inverse_chisqr(post_dof, post_ssqr);
+    
+    double post_var = 1.0 / (prior_ndata / theta(1) + gammas.size() / theta(1));
+    double post_mean = post_var * (prior_ndata / theta(1) * prior_mean + gammas.size() / theta(1) * gbar);
+    
+    theta(0) = RandGen.normal(post_mean, sqrt(post_var));
+    
+    return theta;
+}
+
+
 
 
 

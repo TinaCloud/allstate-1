@@ -29,14 +29,16 @@ class TransitionHyperPrior;
 class TransitionProbability : public Parameter<arma::mat> {
     std::vector<std::vector<int> >& data_;  // the set of time series, can have different lengths
     std::shared_ptr<ClusterLabels> cluster_labels_;  // pointer to the cluster labels object
-    std::vector<std::vector<std::shared_ptr<TransitionPopulation> > > population_par_;  // pointer to the population-level parameter objects
+    // pointer to the population-level parameter objects, in matrix format
+    std::vector<std::shared_ptr<TransitionPopulation> > population_par_;
 public:
     unsigned int ndata;  // the number of data points
     std::vector<unsigned int> ntime;  // the number of time points for each data point
-    unsigned int ncategories;  // the number of possible category values
+    unsigned int ncategories;  // the number of possible category values. assumes category labels are 0, 1, ..., ncategories-1
+    unsigned int cluster_id;  // the label of the cluster that this parameter corresponds to
     
-    TransitionProbability(bool track, std::string label, std::vector<std::vector<int> >& data, unsigned int ncategories,
-                          double temperature=1.0);
+    TransitionProbability(bool track, std::string label, std::vector<std::vector<int> >& data, unsigned int ncats,
+                          unsigned int k, double temperature=1.0);
     
     arma::mat StartingValue();
     
@@ -44,8 +46,8 @@ public:
     
     void SetClusterLabels(std::shared_ptr<ClusterLabels> labels) { cluster_labels_ = labels; }
     
-    void SetPopulationPtr(std::shared_ptr<TransitionPopulation> gamma, unsigned int row_idx, unsigned int col_idx) {
-        population_par_[row_idx][col_idx] = gamma;
+    void SetPopulationPtr(std::shared_ptr<TransitionPopulation> gamma) {
+        population_par_.push_back(gamma);
     }
 };
 

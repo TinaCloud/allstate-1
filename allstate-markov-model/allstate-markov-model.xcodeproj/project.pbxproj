@@ -33,6 +33,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		DF2F65231926863100E1B709 /* run_sampler.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = run_sampler.hpp; sourceTree = "<group>"; };
 		DF41C7A31925899900DD9128 /* markov_chain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = markov_chain.cpp; sourceTree = "<group>"; };
 		DF41C7A41925899900DD9128 /* markov_chain.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = markov_chain.hpp; sourceTree = "<group>"; };
 		DF69DCCF1922E9130046FCD6 /* allstate-markov-model */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "allstate-markov-model"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -95,9 +96,10 @@
 				DF764ECC19240717005B07B0 /* bounded_counts.hpp */,
 				DF764ECE1924110D005B07B0 /* unbounded_counts.cpp */,
 				DF764ECF1924110D005B07B0 /* unbounded_counts.hpp */,
-				DFA3B92419255DE60089126D /* run_sampler.cpp */,
 				DF41C7A31925899900DD9128 /* markov_chain.cpp */,
 				DF41C7A41925899900DD9128 /* markov_chain.hpp */,
+				DFA3B92419255DE60089126D /* run_sampler.cpp */,
+				DF2F65231926863100E1B709 /* run_sampler.hpp */,
 			);
 			path = "allstate-markov-model";
 			sourceTree = "<group>";

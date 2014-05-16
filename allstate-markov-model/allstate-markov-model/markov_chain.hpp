@@ -57,13 +57,13 @@ public:
 
 class TransitionPopulation : public Parameter<double> {
     std::vector<std::shared_ptr<TransitionProbability> > transition_matrices_;  // pointer to the transition probability objects for each cluster
+    std::vector<std::shared_ptr<TransitionPopulation> > gammas_this_row;  // pointer to other populationa-level parameters in this row
     std::shared_ptr<TransitionHyperPrior> hyper_prior_;  // pointer to the hyper-prior parameters corresponding to this object
 public:
     unsigned int row_idx;  // make sure this object knows which row and column of the transition matrix it corresponds to
     unsigned int col_idx;
     
-    TransitionPopulation(bool track, std::string label, unsigned int row_idx, unsigned int col_idx,
-                         double temperature=1.0);
+    TransitionPopulation(bool track, std::string label, unsigned int r, unsigned int c, double temperature=1.0);
     
     double StartingValue();
     
@@ -71,6 +71,10 @@ public:
     
     void AddTransitionMatrix(std::shared_ptr<TransitionProbability> tmatrix) {
         transition_matrices_.push_back(tmatrix);
+    }
+    
+    void AddGamma(std::shared_ptr<TransitionPopulation> other_gamma) {
+        gammas_this_row.push_back(other_gamma);
     }
     
     void SetHyperPrior(std::shared_ptr<TransitionHyperPrior> hyper_prior) { hyper_prior_ = hyper_prior; }

@@ -6,15 +6,22 @@
 //  Copyright (c) 2014 Brandon Kelly. All rights reserved.
 //
 
+#include <boost/math/special_functions/gamma.hpp>
+
 #include "markov_chain.hpp"
 #include "cluster.hpp"
 
+using boost::math::lgamma;
 
 // Global random number generator object, instantiated in random.cpp
 extern boost::random::mt19937 rng;
 
 // Object containing some common random number generators.
 extern RandomGenerator RandGen;
+
+/*
+ *  FUNCTION DEFINITIONS FOR TRANSITION MATRIX
+ */
 
 
 TransitionProbability::TransitionProbability(bool track, std::string label, std::vector<std::vector<int> >& data,
@@ -58,7 +65,7 @@ arma::mat TransitionProbability::RandomPosterior()
     
     // now add population-level contribution
     for (int j=0; j<ncategories * ncategories; j++) {
-        double gamma = population_par_[j]->Value();
+        double gamma = exp(population_par_[j]->Value());  // gamma values are sampled on the log scale since they must be positive
         unsigned int row_id = population_par_[j]->row_idx;
         unsigned int col_id = population_par_[j]->col_idx;
         transition_counts(row_id, col_id) += gamma;
@@ -79,13 +86,49 @@ arma::mat TransitionProbability::RandomPosterior()
 }
 
 
+/*
+ *  FUNCTION DEFINITIONS FOR POPULATION-LEVEL PARAMETERS OF THE TRANSITION MATRICES (AKA, THE GAMMAS)
+ */
 
+TransitionPopulation::TransitionPopulation(bool track, std::string label, unsigned int r, unsigned int c, double temperature) :
+    Parameter<double>(track, label, temperature), row_idx(r), col_idx(c) {}
 
+// initialize by drawing from the prior
+double TransitionPopulation::StartingValue()
+{
+    arma::vec prior_values = hyper_prior_->Value();
+    double prior_mean = prior_values(0);
+    double prior_var = prior_values(1);
+    double log_gamma = RandGen.normal(prior_mean, sqrt(prior_var));
+    return log_gamma;
+}
 
-
-
-
-
+// return the conditional log-posterior: log p(gamma_ij|T_1, ..., T_K, prior values, gamma_ik for k \neq j).
+double TransitionPopulation::LogDensity(double log_gamma)
+{
+    double gamma = exp(log_gamma);
+    double gamma_sum = gamma; // sum over all gammas for this row, needed for the normalization of the dirichlet distribution
+    for (int j=0; j<gammas_this_row.size(); j++) {
+        gamma_sum += exp(gammas_this_row[j]->Value());
+    }
+    double logdensity;
+    
+    // first add contribution from hyper-prior
+    double prior_mean = hyper_prior_->Value()(0);
+    double prior_var = hyper_prior_->Value()(1);
+    logdensity = -0.5 * (log_gamma - prior_mean) * (log_gamma - prior_mean) / prior_var;
+    
+    // now add contribution from dirichlet likelihood
+    unsigned int nclusters = transition_matrices_.size();
+    logdensity += nclusters * (lgamma(gamma_sum) - lgamma(gamma));
+    double log_tprob_sum = 0.0;
+    for (int k=0; k<nclusters; k++) {
+        log_tprob_sum += log(transition_matrices_[k]->Value()(row_idx, col_idx));
+    }
+    logdensity += (gamma - 1.0) * log_tprob_sum;
+    
+    return logdensity;
+}
 
 
 

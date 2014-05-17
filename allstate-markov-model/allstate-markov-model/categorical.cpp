@@ -29,13 +29,13 @@ CategoricalPop::CategoricalPop(bool track, std::string label, arma::uvec& data, 
                                double scale) :
             Parameter<arma::vec>(track, label, temperature), data_(data), prior_scale(scale), prior_shape(shape)
 {
-    ndata = data_.n_cols;
+    ndata = data_.n_elem;
     ncategories_ = data_.max() + 1;
     value_.resize(ncategories_);
     // make sure categories have values j = 0, 2, ..., ncategories - 1
     arma::uvec ucats = arma::unique(data);
     for (int j=0; j<ncategories_; j++) {
-        assert(ucats(j) = j);
+        assert(ucats(j) == j);
     }
 }
 
@@ -50,18 +50,19 @@ arma::vec CategoricalPop::StartingValue()
 }
 
 // compute the conditional log-posterior of the population parameter of this categorical variable
-double CategoricalPop::LogDensity(arma::vec alpha)
+double CategoricalPop::LogDensity(arma::vec log_alpha)
 {
-    alpha = arma::exp(alpha);  // sampling is done on log scale, so convert back to linear scale
+    arma::vec alpha = arma::exp(log_alpha);  // sampling is done on log scale, so convert back to linear scale
     int nclusters = cluster_labels_->nclusters;
     double alpha_sum = arma::sum(alpha);
     
     // grab the counts for the number of times category j is in cluster k, and the number of data points in cluster k
-    arma::umat n_kj = cluster_labels_->GetCategoryCounts(idx_);
-    arma::uvec n_k = cluster_labels_->GetClusterCounts();
+    arma::mat n_kj = cluster_labels_->GetCategoryCounts(idx_);
+    arma::vec n_k = cluster_labels_->GetClusterCounts();
     
     // compute log-posterior
-    double logdensity = (prior_shape - 1.0) * arma::sum(arma::log(alpha)) - alpha_sum / prior_scale;  // log-prior
+    double logdensity = (prior_shape - 1.0) * arma::sum(log_alpha) - alpha_sum / prior_scale;  // log-prior
+    
     logdensity += nclusters * lgamma(alpha_sum);  // terms in log-likelihood
     for (int j=0; j<ncategories_; j++) {
         logdensity -= nclusters * lgamma(alpha(j));
@@ -70,7 +71,7 @@ double CategoricalPop::LogDensity(arma::vec alpha)
         }
     }
     for (int k=0; k<nclusters; k++) {
-        logdensity += lgamma(alpha_sum + n_k(k));
+        logdensity -= lgamma(alpha_sum + n_k(k));
     }
     
     return logdensity;

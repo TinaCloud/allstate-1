@@ -26,7 +26,7 @@ BoundedCountsPop::BoundedCountsPop(bool track, std::string label, arma::uvec& da
                                    double prior_sc) : Parameter<arma::vec>(track, label, temperature), data_(data),
                                     prior_scale(prior_sc), prior_shape(prior_sh), nmax(n)
 {
-    ndata = data_.n_cols;
+    ndata = data_.n_elem;
     value_.resize(2);
 }
 
@@ -40,22 +40,23 @@ arma::vec BoundedCountsPop::StartingValue()
 }
 
 // compute the conditional log-posterior of the population parameter of this bounded counts variable
-double BoundedCountsPop::LogDensity(arma::vec alpha)
+double BoundedCountsPop::LogDensity(arma::vec log_alpha)
 {
-    alpha = arma::exp(alpha);  // sampling is done on log scale, so convert back to linear scale
+    arma::vec alpha = arma::exp(log_alpha);  // sampling is done on log scale, so convert back to linear scale
     int nclusters = cluster_labels_->nclusters;
     arma::uvec zvalues = cluster_labels_->Value();
     // start with contribution from prior
-    double logdensity = (prior_shape - 1.0) * (log(alpha(0) + log(alpha(1)))) - (alpha(0) + alpha(1)) / prior_scale;
+    double logdensity = (prior_shape - 1.0) * arma::sum(log_alpha) - arma::sum(alpha) / prior_scale;
     // get contribution from data
-    logdensity -= nclusters * (lgamma(alpha(0)) + lgamma(alpha(1)) - lgamma(alpha(0) + alpha(1)));
-    arma::uvec n_k = cluster_labels_->GetClusterCounts();  // total number of data points in each cluster
+    logdensity -= nclusters * lbeta(alpha(0), alpha(1));
+    
+    arma::vec zcounts = cluster_labels_->GetClusterCounts();  // total number of data points in each cluster
+    arma::vec counts_sum = arma::zeros<arma::vec>(nclusters);
+    for (int i=0; i<ndata; i++) {
+        counts_sum(zvalues(i)) += data_(i);
+    }
     for (int k=0; k<nclusters; k++) {
-        // first get total counts for this cluster
-        arma::uvec cluster_idx = arma::find(zvalues == k);
-        double counts_sum = arma::sum(data_.elem(cluster_idx));
-        logdensity += lgamma(alpha(0) + counts_sum) + lgamma(alpha(1) + n_k(k) * nmax - counts_sum) -
-            lgamma(n_k(k) * nmax + alpha(0) + alpha(1));
+        logdensity += lbeta(alpha(0) + counts_sum(k), alpha(1) + nmax * zcounts(k) - counts_sum(k));
     }
     
     return logdensity;

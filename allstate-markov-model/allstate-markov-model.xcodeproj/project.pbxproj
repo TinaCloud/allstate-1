@@ -7,6 +7,16 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		DF2F652B192688BF00E1B709 /* run_tests.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF2F652A192688BF00E1B709 /* run_tests.cpp */; };
+		DF2F652D192688BF00E1B709 /* allstate_markov_tests.1 in CopyFiles */ = {isa = PBXBuildFile; fileRef = DF2F652C192688BF00E1B709 /* allstate_markov_tests.1 */; };
+		DF2F65311926893F00E1B709 /* libarmadillo.4.30.2.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DF69DCE11922F59C0046FCD6 /* libarmadillo.4.30.2.dylib */; };
+		DF2F65321926895100E1B709 /* libyamcmcpp.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DF69DCE31922F5AC0046FCD6 /* libyamcmcpp.dylib */; };
+		DF2F6533192689BC00E1B709 /* markov_chain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF41C7A31925899900DD9128 /* markov_chain.cpp */; };
+		DF2F6534192689C000E1B709 /* unbounded_counts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764ECE1924110D005B07B0 /* unbounded_counts.cpp */; };
+		DF2F6535192689C300E1B709 /* bounded_counts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764ECB19240717005B07B0 /* bounded_counts.cpp */; };
+		DF2F6536192689C600E1B709 /* categorical.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764EC81923D6B0005B07B0 /* categorical.cpp */; };
+		DF2F6537192689C900E1B709 /* cluster.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764EC51923D04B005B07B0 /* cluster.cpp */; };
+		DF2F65391926966C00E1B709 /* libboost_system.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DF2F65381926966C00E1B709 /* libboost_system.dylib */; };
 		DF41C7A51925899900DD9128 /* markov_chain.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF41C7A31925899900DD9128 /* markov_chain.cpp */; };
 		DF69DCD31922E9130046FCD6 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF69DCD21922E9130046FCD6 /* main.cpp */; };
 		DF69DCD51922E9130046FCD6 /* allstate_markov_model.1 in CopyFiles */ = {isa = PBXBuildFile; fileRef = DF69DCD41922E9130046FCD6 /* allstate_markov_model.1 */; };
@@ -20,6 +30,16 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		DF2F6526192688BF00E1B709 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+				DF2F652D192688BF00E1B709 /* allstate_markov_tests.1 in CopyFiles */,
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
 		DF69DCCD1922E9130046FCD6 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -34,6 +54,10 @@
 
 /* Begin PBXFileReference section */
 		DF2F65231926863100E1B709 /* run_sampler.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = run_sampler.hpp; sourceTree = "<group>"; };
+		DF2F6528192688BF00E1B709 /* allstate-markov-tests */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "allstate-markov-tests"; sourceTree = BUILT_PRODUCTS_DIR; };
+		DF2F652A192688BF00E1B709 /* run_tests.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = run_tests.cpp; sourceTree = "<group>"; };
+		DF2F652C192688BF00E1B709 /* allstate_markov_tests.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = allstate_markov_tests.1; sourceTree = "<group>"; };
+		DF2F65381926966C00E1B709 /* libboost_system.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libboost_system.dylib; path = ../../../../lib/libboost_system.dylib; sourceTree = "<group>"; };
 		DF41C7A31925899900DD9128 /* markov_chain.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = markov_chain.cpp; sourceTree = "<group>"; };
 		DF41C7A41925899900DD9128 /* markov_chain.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = markov_chain.hpp; sourceTree = "<group>"; };
 		DF69DCCF1922E9130046FCD6 /* allstate-markov-model */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = "allstate-markov-model"; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -53,6 +77,16 @@
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		DF2F6525192688BF00E1B709 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DF2F65391926966C00E1B709 /* libboost_system.dylib in Frameworks */,
+				DF2F65321926895100E1B709 /* libyamcmcpp.dylib in Frameworks */,
+				DF2F65311926893F00E1B709 /* libarmadillo.4.30.2.dylib in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DF69DCCC1922E9130046FCD6 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -65,12 +99,23 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		DF2F6529192688BF00E1B709 /* allstate-markov-tests */ = {
+			isa = PBXGroup;
+			children = (
+				DF2F652A192688BF00E1B709 /* run_tests.cpp */,
+				DF2F652C192688BF00E1B709 /* allstate_markov_tests.1 */,
+			);
+			path = "allstate-markov-tests";
+			sourceTree = "<group>";
+		};
 		DF69DCC61922E9130046FCD6 = {
 			isa = PBXGroup;
 			children = (
+				DF2F65381926966C00E1B709 /* libboost_system.dylib */,
 				DF69DCE31922F5AC0046FCD6 /* libyamcmcpp.dylib */,
 				DF69DCE11922F59C0046FCD6 /* libarmadillo.4.30.2.dylib */,
 				DF69DCD11922E9130046FCD6 /* allstate-markov-model */,
+				DF2F6529192688BF00E1B709 /* allstate-markov-tests */,
 				DF69DCD01922E9130046FCD6 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -79,6 +124,7 @@
 			isa = PBXGroup;
 			children = (
 				DF69DCCF1922E9130046FCD6 /* allstate-markov-model */,
+				DF2F6528192688BF00E1B709 /* allstate-markov-tests */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -107,6 +153,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		DF2F6527192688BF00E1B709 /* allstate-markov-tests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = DF2F652E192688BF00E1B709 /* Build configuration list for PBXNativeTarget "allstate-markov-tests" */;
+			buildPhases = (
+				DF2F6524192688BF00E1B709 /* Sources */,
+				DF2F6525192688BF00E1B709 /* Frameworks */,
+				DF2F6526192688BF00E1B709 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = "allstate-markov-tests";
+			productName = "allstate-markov-tests";
+			productReference = DF2F6528192688BF00E1B709 /* allstate-markov-tests */;
+			productType = "com.apple.product-type.tool";
+		};
 		DF69DCCE1922E9130046FCD6 /* allstate-markov-model */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = DF69DCD81922E9130046FCD6 /* Build configuration list for PBXNativeTarget "allstate-markov-model" */;
@@ -146,11 +209,25 @@
 			projectRoot = "";
 			targets = (
 				DF69DCCE1922E9130046FCD6 /* allstate-markov-model */,
+				DF2F6527192688BF00E1B709 /* allstate-markov-tests */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXSourcesBuildPhase section */
+		DF2F6524192688BF00E1B709 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				DF2F6537192689C900E1B709 /* cluster.cpp in Sources */,
+				DF2F652B192688BF00E1B709 /* run_tests.cpp in Sources */,
+				DF2F6536192689C600E1B709 /* categorical.cpp in Sources */,
+				DF2F6534192689C000E1B709 /* unbounded_counts.cpp in Sources */,
+				DF2F6533192689BC00E1B709 /* markov_chain.cpp in Sources */,
+				DF2F6535192689C300E1B709 /* bounded_counts.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		DF69DCCB1922E9130046FCD6 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -168,6 +245,45 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin XCBuildConfiguration section */
+		DF2F652F192688BF00E1B709 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+					"${HOME}/include",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"${HOME}/lib",
+					/Users/brandonkelly/lib,
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		DF2F6530192688BF00E1B709 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
+				GCC_OPTIMIZATION_LEVEL = fast;
+				HEADER_SEARCH_PATHS = (
+					"$(inherited)",
+					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+					"${HOME}/include",
+				);
+				LIBRARY_SEARCH_PATHS = (
+					"${HOME}/lib",
+					/Users/brandonkelly/lib,
+				);
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
 		DF69DCD61922E9130046FCD6 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -270,6 +386,14 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		DF2F652E192688BF00E1B709 /* Build configuration list for PBXNativeTarget "allstate-markov-tests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DF2F652F192688BF00E1B709 /* Debug */,
+				DF2F6530192688BF00E1B709 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+		};
 		DF69DCCA1922E9130046FCD6 /* Build configuration list for PBXProject "allstate-markov-model" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

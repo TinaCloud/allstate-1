@@ -23,8 +23,8 @@
 double lbeta(double x, double y);
 
 class ClusterLabels : public Parameter<arma::uvec> {
-    arma::uvec cluster_counts_;  // number of data points occupying each cluster
-    std::vector<arma::umat> category_counts_;  // number of data points occupying each cluster and category for each cateogorical
+    arma::vec cluster_counts_;  // number of data points occupying each cluster
+    std::vector<arma::mat> category_counts_;  // number of data points occupying each cluster and category for each cateogorical
     
     // pointers to parameter objects, either a nparameters vector
     std::vector<std::shared_ptr<CategoricalPop> > categoricals_; // list of categorical parameters
@@ -79,14 +79,19 @@ public:
     }
     
     // return the number of data points in each cluster
-    arma::uvec GetClusterCounts() {
+    arma::vec GetClusterCounts() {
         return cluster_counts_;
     }
     
     // get the category counts (nclusters, ncategories) for categorical parameters object of index idx
-    arma::umat GetCategoryCounts(int idx) {
+    arma::mat GetCategoryCounts(int idx) {
         return category_counts_[idx];
     }
+    
+    std::vector<std::shared_ptr<CategoricalPop> > GetCategoricals() { return categoricals_; }
+    std::vector<std::shared_ptr<BoundedCountsPop> > GetBoundedCounts() { return bounded_counts_; }
+    std::vector<std::shared_ptr<UnboundedCountsPop> > GetUnboundedCounts() { return unbounded_counts_; }
+    
     
     // recalculate the cluster and category counts after removing the indexed cluster label
     std::vector<int> RemoveClusterLabel(unsigned int idx);

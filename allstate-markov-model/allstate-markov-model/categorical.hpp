@@ -50,6 +50,8 @@ public:
         idx_ = idx;
     }
     
+    std::shared_ptr<ClusterLabels> GetClusterLabels() { return cluster_labels_; }
+    
     arma::uvec GetData() {
         return data_;
     }

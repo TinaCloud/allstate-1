@@ -39,7 +39,9 @@ public:
         cluster_labels_ = labels;
     }
     
-    arma::uvec GetData() {
+    std::shared_ptr<ClusterLabels> GetClusterLabels() { return cluster_labels_; }
+    
+    arma::uvec& GetData() {
         return data_;
     }
   

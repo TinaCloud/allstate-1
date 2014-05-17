@@ -38,6 +38,7 @@ arma::uvec ClusterLabels::StartingValue()
 
 void ClusterLabels::CountClusters()
 {
+    cluster_counts_.zeros();
     for (int i=0; i<ndata; i++) {
         cluster_counts_(value_(i))++;
     }
@@ -46,16 +47,18 @@ void ClusterLabels::CountClusters()
 void ClusterLabels::CountCategories()
 {
     for (int l=0; l<categoricals_.size(); l++) {
-        arma::umat n_kj(nclusters, categoricals_[l]->GetNcategories());
+        arma::mat n_kj(nclusters, categoricals_[l]->GetNcategories());
+        n_kj.zeros();
         arma::uvec categories_l = categoricals_[l]->GetData();
         for (int i=0; i<ndata; i++) {
-            n_kj(value_(i), categories_l(i)-1) += 1;
+            n_kj(value_(i), categories_l(i)) += 1;
         }
         category_counts_[l] = n_kj;
     }
 }
 
 // update the cluster and category counts after removing the cluster label with input index.
+// return the list of categories for each categorical variable corresponding to this data point
 std::vector<int> ClusterLabels::RemoveClusterLabel(unsigned int idx)
 {
     int this_cluster = value_(idx);

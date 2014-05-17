@@ -18,6 +18,7 @@
 #include "categorical.hpp"
 #include "bounded_counts.hpp"
 #include "unbounded_counts.hpp"
+#include "markov_chain.hpp"
 
 // return the logarithm of the Beta function
 double lbeta(double x, double y);
@@ -30,7 +31,7 @@ class ClusterLabels : public Parameter<arma::uvec> {
     std::vector<std::shared_ptr<CategoricalPop> > categoricals_; // list of categorical parameters
     std::vector<std::shared_ptr<BoundedCountsPop> > bounded_counts_; // list of count parameters with upper bound
     std::vector<std::shared_ptr<UnboundedCountsPop> > unbounded_counts_; // count parameter with no upper bound, one per cluster
-    // std::vector<std::shared_ptr<TransitionMatrix> > transition_matrix_; // markov transition matrix parameter, one per cluster
+    std::vector<std::shared_ptr<TransitionProbability> > transition_matrices_; // markov transition matrix parameter, one per cluster
     
 public:
     int ndata;  // number of data points
@@ -76,6 +77,10 @@ public:
     }
     void AddUnboundedCountsPop(std::shared_ptr<UnboundedCountsPop> new_unbounded_counts) {
         unbounded_counts_.push_back(new_unbounded_counts);
+    }
+    
+    void AddTransitionMatrix(std::shared_ptr<TransitionProbability> new_matrix) {
+        transition_matrices_.push_back(new_matrix);
     }
     
     // return the number of data points in each cluster

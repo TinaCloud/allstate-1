@@ -13,6 +13,7 @@
 #include <boost/random/discrete_distribution.hpp>
 #include <boost/random/binomial_distribution.hpp>
 #include <boost/random/negative_binomial_distribution.hpp>
+#include <boost/random/uniform_int_distribution.hpp>
 #include <boost/math/special_functions/gamma.hpp>
 
 // local includes
@@ -99,6 +100,31 @@ arma::uvec generate_categoricals(arma::uvec zlabels, arma::mat probs) {
     return categories;
 }
 
+std::vector<std::vector<int> > generate_markov_chain(int nchains, arma::mat Tprob) {
+    int nstates = Tprob.n_cols;
+    arma::uvec ntime = arma::randi<arma::uvec>(nchains, arma::distr_param(2, 7));
+    
+    std::vector<std::vector<double> > Tprob_std;
+    for (int r=0; r<nstates; r++) {
+        Tprob_std.push_back(arma::conv_to<std::vector<double> >::from(Tprob.row(r)));
+    }
+    
+    std::vector<std::vector<int> > chains(nchains);
+    boost::random::uniform_int_distribution<> istate(0, nstates-1);
+    for (int i=0; i<nchains; i++) {
+        std::vector<int> chain_i(ntime(i));
+        chain_i[0] = istate(rng);
+        for (int t=1; t<ntime(i); t++) {
+            int previous_state = chain_i[t-1];
+            int next_state =
+                boost::random::discrete_distribution<>
+                (Tprob_std[previous_state].begin(), Tprob_std[previous_state].end())(rng);
+            chain_i[t] = next_state;
+        }
+        chains[i] = chain_i;
+    }
+    return chains;
+}
 
 TEST_CASE("Set the seed for the random number generator for reproducibility.", "[startup]") {
     rng.seed(123456);
@@ -375,6 +401,172 @@ TEST_CASE("Test methods of Categorical variables.", "[categorical]") {
 
     double logratio_slow = logratio_slow1 - logratio_slow2;
     REQUIRE(approximately_equal(logratio, logratio_slow));
+}
+
+TEST_CASE("Test methods of TransitionProb object.", "[transition prob]") {
+    // generate some data
+    int ndata = 10000;
+    int nstates = 3;
+    int nclusters = 2;
+    
+    std::vector<double> pi(2);
+    pi[0] = 0.35;
+    pi[1] = 0.65;
+    
+    arma::uvec zlabels0 = generate_cluster_labels(ndata, pi);
+
+    arma::mat Tprob0 = arma::randu<arma::mat>(nstates, nstates);
+    // row sums must be normalized to one
+    for (int r=0; r<nstates; r++) {
+        Tprob0.row(r) /= arma::sum(Tprob0.row(r));
+    }
+    
+    std::vector<std::vector<int> > chains = generate_markov_chain(ndata, Tprob0);
+    
+    int cluster_id = 1;
+    TransitionProbability tprob_object(true, "Tprob", chains, nstates, cluster_id);
+    
+    // first make sure cluster labels pointer is correctly set
+    std::shared_ptr<ClusterLabels> p_labels = std::make_shared<ClusterLabels>(true, "Z", ndata, nclusters);
+    p_labels->Save(zlabels0);
+    
+    tprob_object.SetClusterLabels(p_labels);
+    
+    REQUIRE(tprob_object.GetClusterLabels() == p_labels);
+    
+    // now add the population-level parameters and make sure their pointer are correctly set
+    for (int r=0; r<nstates; r++) {
+        for (int c=0; c<nstates; c++) {
+            std::shared_ptr<TransitionPopulation> p_tpop = std::make_shared<TransitionPopulation>(true, "Tpop", r, c);
+            tprob_object.AddPopulationPtr(p_tpop);
+            REQUIRE(p_tpop == tprob_object.GetPopulationPtr(r, c));
+        }
+    }
+    
+    // now generate draws from the posterior and make sure these agree with the input transition matrix
+    int ndraws = 1000;
+    arma::mat Tmean = arma::zeros<arma::mat>(nstates, nstates);
+    for (int i=0; i<ndraws; i++) {
+        arma::mat Tdraw = tprob_object.RandomPosterior();
+        Tmean = Tmean + Tdraw;
+    }
+    Tmean /= ndraws;
+    
+    for (int r=0; r<nstates; r++) {
+        for (int c=0; c<nstates; c++) {
+            CHECK(approximately_equal(Tprob0(r,c), Tmean(r,c), 0.01, 0.05));
+        }
+    }
+}
+
+TEST_CASE("Test methods of TransitionPopulation class", "[transition population]") {
+    // first generate some transition matrices
+    int nstates = 5;
+    int nclusters = 10;
+    
+    std::vector<arma::mat> Tprobs(nclusters);
+    for (int k=0; k<nclusters; k++) {
+        arma::mat Tprob_k = arma::randu<arma::mat>(nstates, nstates);
+        // row sums must be normalized to one
+        for (int r=0; r<nstates; r++) {
+            Tprob_k.row(r) /= arma::sum(Tprob_k.row(r));
+        }
+        Tprobs[k] = Tprob_k;
+    }
+
+    std::vector<std::shared_ptr<TransitionPopulation> > gammas;
+    for (int r=0; r<nstates; r++) {
+        for (int c=0; c<nstates; c++) {
+            gammas.push_back(std::make_shared<TransitionPopulation>(true, "gamma", r, c));
+        }
+    }
+
+    int ndata = 100;
+    std::vector<std::vector<int> > chains = generate_markov_chain(ndata, Tprobs[0]);
+    
+    std::vector<std::shared_ptr<TransitionProbability> > tprob_objects(nclusters);
+    for (int k=0; k<nclusters; k++) {
+        tprob_objects[k] = std::make_shared<TransitionProbability>(true, "T", chains, nstates, k);
+        tprob_objects[k]->Save(Tprobs[k]);
+    }
+    std::shared_ptr<TransitionHyperPrior> hyper = std::make_shared<TransitionHyperPrior>(true, "hyper");
+    
+    // make sure the population-level object know about the cluster-level and hyper prior
+    for (int i=0; i<gammas.size(); i++) {
+        for (int k=0; k<nclusters; k++) {
+            gammas[i]->AddTransitionMatrix(tprob_objects[k]);
+        }
+        gammas[i]->SetHyperPrior(hyper);
+        // add the other gammas in this row for this object
+        for (int j=0; j<gammas.size(); j++) {
+            if (j != i && gammas[j]->row_idx == gammas[i]->row_idx) {
+                gammas[i]->AddGamma(gammas[j]);
+            }
+        }
+    }
+    
+    // now make sure all the pointers are correctly set
+    for (int i=0; i<gammas.size(); i++) {
+        for (int k=0; k<nclusters; k++) {
+            REQUIRE(tprob_objects[k] == gammas[i]->GetTransitionMatrix(k));
+        }
+        REQUIRE(hyper == gammas[i]->GetHyperPrior());
+        for (int j=0; j<gammas.size(); j++) {
+            if (j != i && gammas[j]->row_idx == gammas[i]->row_idx) {
+                REQUIRE(gammas[i]->GetGamma(gammas[j]->col_idx) == gammas[j]);
+            }
+        }
+    }
+    
+    // finally, compare log-densities. just do this for a single row
+    int test_row = 2;
+    int test_col = 3;
+    int g_idx = 0;
+    hyper->Save(hyper->StartingValue());
+    
+    for (int i=0; i<gammas.size(); i++) {
+        if (gammas[i]->row_idx == test_row && gammas[i]->col_idx == test_col) {
+            g_idx = i;
+        }
+        gammas[i]->Save(gammas[i]->StartingValue());
+    }
+    
+    double test_gamma = 3.4;
+    double old_gamma = exp(gammas[g_idx]->Value());
+    double logratio = gammas[g_idx]->LogDensity(log(test_gamma)) - gammas[g_idx]->LogDensity((log(old_gamma)));
+    
+    // calculate the ratio of log densities the slow the way
+    double logratio_slow1 = -0.5 * (log(test_gamma) - hyper->Value()(0)) * (log(test_gamma) - hyper->Value()(0)) / hyper->Value()(1);
+    double logratio_slow2 = -0.5 * (log(old_gamma) - hyper->Value()(0)) * (log(old_gamma) - hyper->Value()(0)) / hyper->Value()(1);
+
+    for (int k=0; k<nclusters; k++) {
+        gammas[g_idx]->Save(log(test_gamma));
+        double gamma_sum = 0.0;
+        for (int i=0; i<gammas.size(); i++) {
+            if (gammas[i]->row_idx == test_row) {
+                // sum over columns for this row
+                gamma_sum += exp(gammas[i]->Value());
+                logratio_slow1 -= lgamma(exp(gammas[i]->Value()));
+                logratio_slow1 += (exp(gammas[i]->Value()) - 1.0) * log(Tprobs[k](gammas[i]->row_idx, gammas[i]->col_idx));
+            }
+        }
+        logratio_slow1 += lgamma(gamma_sum);
+        
+        gammas[g_idx]->Save(log(old_gamma));
+        gamma_sum = 0.0;
+        for (int i=0; i<gammas.size(); i++) {
+            if (gammas[i]->row_idx == test_row) {
+                // sum over columns for this row
+                gamma_sum += exp(gammas[i]->Value());
+                logratio_slow2 -= lgamma(exp(gammas[i]->Value()));
+                logratio_slow2 += (exp(gammas[i]->Value()) - 1.0) * log(Tprobs[k](gammas[i]->row_idx, gammas[i]->col_idx));
+            }
+        }
+        logratio_slow2 += lgamma(gamma_sum);
+    }
+    
+    double logratio_slow = logratio_slow1 - logratio_slow2;
+    REQUIRE(approximately_equal(logratio_slow, logratio));
 }
 
 TEST_CASE("Test methods of ClusterLabels class, sans the LogDensity methods.", "[cluster labels]") {

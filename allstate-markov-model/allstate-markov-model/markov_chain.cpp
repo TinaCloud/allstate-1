@@ -29,6 +29,7 @@ TransitionProbability::TransitionProbability(bool track, std::string label, std:
                             Parameter<arma::mat>(track, label, temperature), ncategories(ncats), data_(data), cluster_id(k)
 {
     ndata = data_.size();
+    ntime.resize(ndata);
     // get the number of time points for each datum
     for (int i=0; i<ndata; i++) {
         ntime[i] = data_[i].size();
@@ -76,7 +77,7 @@ arma::mat TransitionProbability::RandomPosterior()
     arma::mat Tprop(ncategories, ncategories);
     // obtain draws from a dirichlet distribution, one row at a time
     for (int r=0; r<ncategories; r++) {
-        arma::vec gdraws(ncategories);
+        arma::rowvec gdraws(ncategories);
         for (int c=0; c<ncategories; c++) {
             gdraws[c] = RandGen.gamma(transition_counts(r,c), 1.0);
         }
@@ -85,6 +86,16 @@ arma::mat TransitionProbability::RandomPosterior()
     }
 
     return Tprop;
+}
+
+std::shared_ptr<TransitionPopulation> TransitionProbability::GetPopulationPtr(int row_idx, int col_idx) {
+    for (int i=0; i<population_par_.size(); i++) {
+        if (population_par_[i]->row_idx == row_idx && population_par_[i]->col_idx == col_idx) {
+            return population_par_[i];
+        }
+    }
+    std::cerr << "WARNING! Could not find desired object, returning pointer to empty object." << std::endl;
+    return std::make_shared<TransitionPopulation>(true, "empty", row_idx, col_idx);  // could not find the desired object, so return pointer to empty object
 }
 
 
@@ -135,20 +146,36 @@ double TransitionPopulation::LogDensity(double log_gamma)
     return logdensity;
 }
 
+std::shared_ptr<TransitionPopulation> TransitionPopulation::GetGamma(int col_id)
+{
+    for (int i=0; i<gammas_this_row.size(); i++) {
+        if (gammas_this_row[i]->col_idx == col_id) {
+            return gammas_this_row[i];
+        }
+    }
+    std::cerr << "WARNING! Could not find a Gamma for column " << col_id << std::endl;
+    return std::make_shared<TransitionPopulation>(true, "empty", row_idx, col_id);
+}
+
 /*
  *  FUNCTION DEFINITIONS FOR HYPER-PRIORS OF POPULATION-LEVEL PARAMETERS
  */
 
 TransitionHyperPrior::TransitionHyperPrior(bool track, std::string label, double prior_mu, double prior_kappa, unsigned int prior_nu,
                                            double prior_var0, double temperature) : Parameter<arma::vec>(track, label, temperature),
-                                            prior_mean(prior_mu), prior_ndata(prior_kappa), prior_dof(prior_nu), prior_ssqr(prior_var0) {}
+                                            prior_mean(prior_mu), prior_ndata(prior_kappa), prior_dof(prior_nu), prior_ssqr(prior_var0)
+{
+    value_.resize(2);
+    value_(0) = 0.0;
+    value_(1) = 1.0;
+}
 
 
 // just draw from the prior to start
 arma::vec TransitionHyperPrior::StartingValue()
 {
     arma::vec theta(2);
-    theta(0) = RandGen.normal(prior_mean, prior_ssqr);
+    theta(0) = RandGen.normal(prior_mean, prior_ssqr / prior_ndata);
     theta(1) = RandGen.scaled_inverse_chisqr(prior_dof, prior_ssqr);
     return theta;
 }

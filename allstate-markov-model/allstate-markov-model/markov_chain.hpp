@@ -46,9 +46,12 @@ public:
     
     void SetClusterLabels(std::shared_ptr<ClusterLabels> labels) { cluster_labels_ = labels; }
     
-    void SetPopulationPtr(std::shared_ptr<TransitionPopulation> gamma) {
+    void AddPopulationPtr(std::shared_ptr<TransitionPopulation> gamma) {
         population_par_.push_back(gamma);
     }
+    
+    std::shared_ptr<ClusterLabels> GetClusterLabels() { return cluster_labels_; }
+    std::shared_ptr<TransitionPopulation> GetPopulationPtr(int row_idx, int col_idx);
 };
 
 /*
@@ -78,6 +81,10 @@ public:
     }
     
     void SetHyperPrior(std::shared_ptr<TransitionHyperPrior> hyper_prior) { hyper_prior_ = hyper_prior; }
+    
+    std::shared_ptr<TransitionProbability> GetTransitionMatrix(int cluster_id) { return transition_matrices_[cluster_id]; }
+    std::shared_ptr<TransitionHyperPrior> GetHyperPrior() { return hyper_prior_; }
+    std::shared_ptr<TransitionPopulation> GetGamma(int col_id);
 };
 
 /*
@@ -94,8 +101,8 @@ public:
     unsigned int prior_dof;  // prior degrees-of-freedom on the variance of log(gamma)
     double prior_ssqr;  // prior scale parameter on the variance of log(gamma)
     
-    TransitionHyperPrior(bool track, std::string label, double prior_mu, double prior_kappa, unsigned int prior_nu,
-                         double prior_var0, double temperature=1.0);
+    TransitionHyperPrior(bool track, std::string label, double prior_mu=0.0, double prior_kappa=1.0, unsigned int prior_nu=2,
+                         double prior_var0=1.0, double temperature=1.0);
     
     arma::vec StartingValue();
     

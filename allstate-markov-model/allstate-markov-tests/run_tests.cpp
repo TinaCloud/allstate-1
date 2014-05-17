@@ -508,7 +508,70 @@ TEST_CASE("Test methods of ClusterLabels class, sans the LogDensity methods.", "
 
 // test the methods of ClusterLabels assocated with computing the conditional probabilities
 TEST_CASE("Test conditional probabilities of ClusterLabels class.", "[cluster labels]") {
+    // first generate the data
+    int ndata = 10000;
+    double pi0[5] = {0.1, 0.3, 0.05, 0.45, 0.1};
+    std::vector<double> pi(5);
+    for (int i=0; i<5; i++) {
+        pi[i] = pi0[i];
+    }
+    int nclusters = pi.size();
     
+    ClusterLabels cluster(false, "Z", ndata, nclusters);
+    cluster.Save(generate_cluster_labels(ndata, pi));
+    
+    // categorical data
+    arma::mat probs1 = arma::randu<arma::mat>(nclusters, 4);  // 4 categories
+    for (int k=0; k<nclusters; k++) {
+        probs1.row(k) /= arma::sum(probs1.row(k));
+    }
+    
+    arma::uvec categories1 = generate_categoricals(cluster.Value(), probs1);
+    
+    arma::mat probs2 = arma::randu<arma::mat>(nclusters, 6);  // 6 categories
+    for (int k=0; k<nclusters; k++) {
+        probs2.row(k) /= arma::sum(probs2.row(k));
+    }
+    
+    arma::uvec categories2 = generate_categoricals(cluster.Value(), probs2);
+    
+    // bounded counts data
+    int nmax1 = 100;
+    int nmax2 = 23;
+    arma::vec p1 = arma::randu<arma::vec>(nclusters);
+    arma::vec p2 = arma::randu<arma::vec>(nclusters);
+    arma::uvec bcounts1 = generate_bounded_counts(cluster.Value(), p1, nmax1);
+    arma::uvec bcounts2 = generate_bounded_counts(cluster.Value(), p2, nmax2);
+    
+    // unbounded counts data
+    int rfail1 = 100;
+    int rfail2 = 23;
+    int rfail3 = 234;
+    p1 = arma::randu<arma::vec>(nclusters);
+    p2 = arma::randu<arma::vec>(nclusters);
+    arma::vec p3 = arma::randu<arma::vec>(nclusters);
+    arma::uvec ubcounts1 = generate_bounded_counts(cluster.Value(), p1, rfail1);
+    arma::uvec ubcounts2 = generate_bounded_counts(cluster.Value(), p2, rfail2);
+    arma::uvec ubcounts3 = generate_bounded_counts(cluster.Value(), p3, rfail3);
+    
+    // set the parameter objects
+    cluster.AddCategoricalPop(std::make_shared<CategoricalPop>(true, "CAT-1", categories1));
+    cluster.AddCategoricalPop(std::make_shared<CategoricalPop>(true, "CAT-2", categories2));
+    cluster.AddBoundedCountsPop(std::make_shared<BoundedCountsPop>(true, "B-1", bcounts1, nmax1));
+    cluster.AddBoundedCountsPop(std::make_shared<BoundedCountsPop>(true, "B-2", bcounts2, nmax2));
+    cluster.AddUnboundedCountsPop(std::make_shared<UnboundedCountsPop>(true, "UB-1", ubcounts1));
+    cluster.AddUnboundedCountsPop(std::make_shared<UnboundedCountsPop>(true, "UB-2", ubcounts2));
+    cluster.AddUnboundedCountsPop(std::make_shared<UnboundedCountsPop>(true, "UB-3", ubcounts3));
+
+    int test_idx = ndata / 4;
+    // need to remove this test point
+    std::vector<int> test_categories = cluster.RemoveClusterLabel(test_idx);
+    
+    // first make sure marginal distributions is correct
+    arma::vec logdensity = arma::zeros<arma::vec>(nclusters);
+    cluster.AddMarginalContribution(logdensity);
+    arma::vec logdensity_test = arma::zeros<arma::vec>(nclusters);
+        // compare with full marginal
 }
 
 // run MCMC sampler with 2 bounded counts objects, 3 clusters

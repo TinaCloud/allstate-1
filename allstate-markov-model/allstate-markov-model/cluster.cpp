@@ -174,7 +174,7 @@ arma::uvec ClusterLabels::RandomPosterior()
     arma::uvec zvalues = value_;
     // compute probability of cluster label given others, one-at-a-time
     for (int i=0; i<ndata; i++) {
-        arma::vec log_zprob = arma::zeros(nclusters);
+        arma::vec log_zprob = arma::zeros<arma::vec>(nclusters);
         
         // first update the cluster and category counts after removing this data point
         std::vector<int> this_category = RemoveClusterLabel(i);

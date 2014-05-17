@@ -29,6 +29,7 @@ UnboundedCountsPop::UnboundedCountsPop(bool track, std::string label, arma::uvec
 {
     ndata = data_.n_elem;
     value_.resize(3);
+    value_.zeros();
 }
 
 // set the starting value by just drawing from the prior

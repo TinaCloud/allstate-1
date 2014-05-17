@@ -28,6 +28,7 @@ BoundedCountsPop::BoundedCountsPop(bool track, std::string label, arma::uvec& da
 {
     ndata = data_.n_elem;
     value_.resize(2);
+    value_.zeros();
 }
 
 // set the starting value by just drawing from the prior

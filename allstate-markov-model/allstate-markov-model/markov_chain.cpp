@@ -33,6 +33,8 @@ TransitionProbability::TransitionProbability(bool track, std::string label, std:
     for (int i=0; i<ndata; i++) {
         ntime[i] = data_[i].size();
     }
+    value_.resize(ncats, ncats);
+    value_.eye();
 }
 
 arma::mat TransitionProbability::StartingValue()

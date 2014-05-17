@@ -99,6 +99,7 @@ arma::uvec generate_categoricals(arma::uvec zlabels, arma::mat probs) {
     return categories;
 }
 
+
 TEST_CASE("Set the seed for the random number generator for reproducibility.", "[startup]") {
     rng.seed(123456);
 }
@@ -563,16 +564,194 @@ TEST_CASE("Test conditional probabilities of ClusterLabels class.", "[cluster la
     cluster.AddUnboundedCountsPop(std::make_shared<UnboundedCountsPop>(true, "UB-2", ubcounts2));
     cluster.AddUnboundedCountsPop(std::make_shared<UnboundedCountsPop>(true, "UB-3", ubcounts3));
 
+    cluster.CountClusters();
+    cluster.CountCategories();
+    
     int test_idx = ndata / 4;
     // need to remove this test point
     std::vector<int> test_categories = cluster.RemoveClusterLabel(test_idx);
     
-    // first make sure marginal distributions is correct
+    arma::vec zcounts = cluster.GetClusterCounts();
+    
+    /*
+     *  first make sure marginal distributions is correct
+     */
+    
     arma::vec logdensity = arma::zeros<arma::vec>(nclusters);
+    arma::vec zprob = arma::zeros<arma::vec>(nclusters);
     cluster.AddMarginalContribution(logdensity);
+    
     arma::vec logdensity_test = arma::zeros<arma::vec>(nclusters);
-        // compare with full marginal
+    arma::vec zprob_test = arma::zeros<arma::vec>(nclusters);
+    // compare with full marginal, a dirichlet-multinomial distribution
+    double alpha = cluster.prior_concentration / nclusters;
+    double alpha_sum = cluster.prior_concentration;
+    for (int k=0; k<nclusters; k++) {
+        logdensity_test(k) += lgamma(alpha_sum) - lgamma(alpha_sum + ndata);
+        for (int kk=0; kk<nclusters; kk++) {
+            double this_zcount = zcounts(kk);
+            if (kk == k) {
+                this_zcount += 1.0; // add in contribution for zlabel(test_idx) = k
+            }
+            logdensity_test(k) += lgamma(alpha + this_zcount) - lgamma(alpha);
+        }
+    }
+    zprob = arma::exp(logdensity - logdensity.max()) / arma::sum(arma::exp(logdensity - logdensity.max()));
+    zprob_test = arma::exp(logdensity_test - logdensity_test.max()) / arma::sum(arma::exp(logdensity_test - logdensity_test.max()));
+    int nequal = 0;
+    for (int k=0; k<nclusters; k++) {
+        nequal += approximately_equal(zprob(k), zprob_test(k));
+    }
+    REQUIRE(nequal == nclusters);
+    
+    /*
+     *  now test contribution from categoricals
+     */
+    std::vector<std::shared_ptr<CategoricalPop> > catobjects = cluster.GetCategoricals();
+    
+    cluster.AddCategoricalContribution(logdensity, test_categories);
+    
+    for (int l=0; l<catobjects.size(); l++) {
+        arma::mat n_kj = cluster.GetCategoryCounts(l);  // counts have already had test_idx removed
+        arma::vec alpha_l = arma::exp(catobjects[l]->Value());
+        double alpha_sum = arma::sum(alpha_l);
+        for (int k=0; k<nclusters; k++) {
+            for (int kk=0; kk<nclusters; kk++) {
+                double this_zcounts = zcounts(kk);
+                if (kk == k) {
+                    this_zcounts += 1;
+                }
+                logdensity_test(k) += lgamma(alpha_sum) - lgamma(alpha_sum + this_zcounts);
+                for (int j=0; j<catobjects[l]->GetNcategories(); j++) {
+                    double this_gcounts = n_kj(kk, j);
+                    if (kk == k && j == test_categories[l]) {
+                        this_gcounts += 1;  // include contribution from test_idx for zlabel(test_idx) = k
+                    }
+                    logdensity_test(k) += lgamma(alpha_l(j) + this_gcounts) - lgamma(alpha_l(j));
+                }
+            }
+        }
+    }
+    
+    zprob = arma::exp(logdensity - logdensity.max()) / arma::sum(arma::exp(logdensity - logdensity.max()));
+    zprob_test = arma::exp(logdensity_test - logdensity_test.max()) / arma::sum(arma::exp(logdensity_test - logdensity_test.max()));
+    nequal = 0;
+    for (int k=0; k<nclusters; k++) {
+        nequal += approximately_equal(zprob(k), zprob_test(k));
+    }
+    REQUIRE(nequal == nclusters);
+    
+    /*
+     *  now test contribution from bounded count objects
+     */
+    std::vector<std::shared_ptr<BoundedCountsPop> > bobjects = cluster.GetBoundedCounts();
+    arma::uvec zlabels = cluster.Value();
+
+    cluster.AddBoundedContribution(logdensity, zlabels, test_idx);
+
+    for (int l=0; l<bobjects.size(); l++) {
+        double alpha_l = exp(bobjects[l]->Value()(0));
+        double beta_l = exp(bobjects[l]->Value()(1));
+        arma::uvec counts_l = bobjects[l]->GetData();
+        for (int k=0; k<nclusters; k++) {
+            // switch the zlabel
+            zlabels(test_idx) = k;
+            // first compute normalization
+            for (int i=0; i<ndata; i++) {
+                logdensity_test(k) -= log(bobjects[l]->nmax + 1.0) - lbeta(bobjects[l]->nmax - counts_l(i) + 1.0, counts_l(i) + 1.0);
+            }
+            for (int kk=0; kk<nclusters; kk++) {
+                arma::uvec this_cluster = arma::find(zlabels == kk);
+                double counts_sum;
+                if (this_cluster.n_elem > 0) {
+                    counts_sum = arma::sum(counts_l.elem(this_cluster));
+                } else {
+                    counts_sum = 0.0;
+                }
+                double barg1 = counts_sum + alpha_l;
+                double barg2 = this_cluster.n_elem * bobjects[l]->nmax + beta_l - counts_sum;
+                logdensity_test(k) += lbeta(barg1, barg2) - lbeta(alpha_l, beta_l);
+            }
+        }
+    }
+    
+    zprob = arma::exp(logdensity - logdensity.max()) / arma::sum(arma::exp(logdensity - logdensity.max()));
+    zprob_test = arma::exp(logdensity_test - logdensity_test.max()) / arma::sum(arma::exp(logdensity_test - logdensity_test.max()));
+    nequal = 0;
+    for (int k=0; k<nclusters; k++) {
+        nequal += approximately_equal(zprob(k), zprob_test(k));
+    }
+    REQUIRE(nequal == nclusters);
+    
+    /*
+     *  now test contribution from bounded count objects
+     */
+    std::vector<std::shared_ptr<UnboundedCountsPop> > ubobjects = cluster.GetUnboundedCounts();
+    
+    cluster.AddUnboundedContribution(logdensity, zlabels, test_idx);
+    
+    for (int l=0; l<ubobjects.size(); l++) {
+        double alpha_l = exp(ubobjects[l]->Value()(0));
+        double beta_l = exp(ubobjects[l]->Value()(1));
+        double rfail_l = exp(ubobjects[l]->Value()(2));
+        arma::uvec counts_l = ubobjects[l]->GetData();
+        for (int k=0; k<nclusters; k++) {
+            // switch the zlabel
+            zlabels(test_idx) = k;
+            // first compute normalization
+            for (int i=0; i<ndata; i++) {
+                logdensity_test(k) += lgamma(counts_l(i)+ rfail_l) - lgamma(counts_l(i) + 1.0) - lgamma(rfail_l);
+            }
+            for (int kk=0; kk<nclusters; kk++) {
+                arma::uvec this_cluster = arma::find(zlabels == kk);
+                double counts_sum;
+                if (this_cluster.n_elem > 0) {
+                    counts_sum = arma::sum(counts_l.elem(this_cluster));
+                } else {
+                    counts_sum = 0.0;
+                }
+                double barg1 = counts_sum + alpha_l;
+                double barg2 = this_cluster.n_elem * rfail_l + beta_l;
+                logdensity_test(k) += lbeta(barg1, barg2) - lbeta(alpha_l, beta_l);
+            }
+        }
+    }
+    
+    zprob = arma::exp(logdensity - logdensity.max()) / arma::sum(arma::exp(logdensity - logdensity.max()));
+    zprob_test = arma::exp(logdensity_test - logdensity_test.max()) / arma::sum(arma::exp(logdensity_test - logdensity_test.max()));
+    nequal = 0;
+    for (int k=0; k<nclusters; k++) {
+        nequal += approximately_equal(zprob(k), zprob_test(k));
+    }
+
+    REQUIRE(nequal == nclusters);
+
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 // run MCMC sampler with 2 bounded counts objects, 3 clusters
 TEST_CASE("Test Sampler for 2 bounded counts objects, 3 clusters", "[bounded counts]") {

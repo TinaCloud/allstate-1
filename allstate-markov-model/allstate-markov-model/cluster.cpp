@@ -103,7 +103,7 @@ void ClusterLabels::AddCategoricalContribution(arma::vec& log_zprob, std::vector
 }
 
 // add in the contribution to the conditional log-posterior from the bounded count data. this is done in-place.
-void ClusterLabels::AddBoundedContribution(arma::vec& log_zprob, arma::uvec& zvalues, int i)
+void ClusterLabels::AddBoundedContribution(arma::vec& log_zprob, arma::uvec& zvalues, int idx)
 {
     for (int l=0; l<bounded_counts_.size(); l++) {
         // first compute the log-beta functions for each cluster after removing this data point. do this here to avoid
@@ -112,12 +112,12 @@ void ClusterLabels::AddBoundedContribution(arma::vec& log_zprob, arma::uvec& zva
         std::vector<double> logbeta(nclusters);
         arma::uvec counts_l = bounded_counts_[l]->GetData();
         arma::vec alpha = arma::exp(bounded_counts_[l]->Value());  // population-level parameters
-        for (int k=0; k<nclusters; k++) {
-            arma::uvec cluster_idx = arma::find(zvalues == k);  // find data points in this cluster
-            counts_sum[k] = arma::sum(counts_l.elem(cluster_idx));
-            if (zvalues(i) == k) {
-                counts_sum[k] -= counts_l(i);
+        for (int i=0; i<ndata; i++) {
+            if (i != idx) {
+                counts_sum[zvalues(i)] += counts_l(i);  // sum of counts after removing data point idx
             }
+        }
+        for (int k=0; k<nclusters; k++) {
             logbeta[k] = lbeta(alpha(0) + counts_sum[k],
                                alpha(1) + cluster_counts_(k) * bounded_counts_[l]->nmax - counts_sum[k]);
         }
@@ -125,8 +125,8 @@ void ClusterLabels::AddBoundedContribution(arma::vec& log_zprob, arma::uvec& zva
         // now calculate log_zprob by adding in the i-th data point assuming z[i] = k one at a time so we don't have to
         // redo the beta function calculations
         for (int k=0; k<nclusters; k++) {
-            double barg1 = alpha(0) + counts_sum[k] + counts_l(i);
-            double barg2 = (cluster_counts_(k) + 1.0) * bounded_counts_[l]->nmax + alpha(1) - counts_sum[k] - counts_l(i);
+            double barg1 = alpha(0) + counts_sum[k] + counts_l(idx);
+            double barg2 = (cluster_counts_(k) + 1.0) * bounded_counts_[l]->nmax + alpha(1) - counts_sum[k] - counts_l(idx);
             double this_logbeta = lbeta(barg1, barg2);
             log_zprob(k) += logbeta_sum - logbeta[k] + this_logbeta;
         }
@@ -134,7 +134,7 @@ void ClusterLabels::AddBoundedContribution(arma::vec& log_zprob, arma::uvec& zva
 }
 
 // add in the contribution to the conditional log-posterior from the unbounded count data. this is done in-place.
-void ClusterLabels::AddUnboundedContribution(arma::vec& log_zprob, arma::uvec& zvalues, int i)
+void ClusterLabels::AddUnboundedContribution(arma::vec& log_zprob, arma::uvec& zvalues, int idx)
 {
     for (int l=0; l<unbounded_counts_.size(); l++) {
         // first compute the log-beta functions for each cluster after removing this data point. do this here to avoid
@@ -143,19 +143,19 @@ void ClusterLabels::AddUnboundedContribution(arma::vec& log_zprob, arma::uvec& z
         std::vector<double> logbeta(nclusters);
         arma::uvec counts_l = unbounded_counts_[l]->GetData();
         arma::vec alpha = arma::exp(unbounded_counts_[l]->Value());  // population-level parameters
-        for (int k=0; k<nclusters; k++) {
-            arma::uvec cluster_idx = arma::find(zvalues == k);  // find data points in this cluster
-            counts_sum[k] = arma::sum(counts_l.elem(cluster_idx));
-            if (zvalues(i) == k) {
-                counts_sum[k] -= counts_l(i);
+        for (int i=0; i<ndata; i++) {
+            if (i != idx) {
+                counts_sum[zvalues(i)] += counts_l(i);  // sum of counts after removing data point idx
             }
+        }
+        for (int k=0; k<nclusters; k++) {
             logbeta[k] = lbeta(alpha(0) + counts_sum[k], alpha(1) + cluster_counts_(k) * alpha(2));
         }
         double logbeta_sum = std::accumulate(logbeta.begin(), logbeta.end(), 0.0);
         // now calculate log_zprob by adding in the i-th data point assuming z[i] = k one at a time so we don't have to
         // redo the beta function calculations
         for (int k=0; k<nclusters; k++) {
-            double barg1 = alpha(0) + counts_sum[k] + counts_l(i);
+            double barg1 = alpha(0) + counts_sum[k] + counts_l(idx);
             double barg2 = (cluster_counts_(k) + 1.0) * alpha(2) + alpha(1);
             double this_logbeta = lbeta(barg1, barg2);
             log_zprob(k) += logbeta_sum - logbeta[k] + this_logbeta;
@@ -185,6 +185,8 @@ arma::uvec ClusterLabels::RandomPosterior()
         // now add in contributions from categoricals
         AddCategoricalContribution(log_zprob, this_category);
 
+        // TODO: can probably speed up the count object calculations by saving the count sums and updating them in place
+        
         // add in contributions from bounded count objects.
         AddBoundedContribution(log_zprob, zvalues, i);
         

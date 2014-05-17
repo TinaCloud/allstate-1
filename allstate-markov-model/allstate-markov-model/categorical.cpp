@@ -32,6 +32,7 @@ CategoricalPop::CategoricalPop(bool track, std::string label, arma::uvec& data, 
     ndata = data_.n_elem;
     ncategories_ = data_.max() + 1;
     value_.resize(ncategories_);
+    value_.zeros();
     // make sure categories have values j = 0, 2, ..., ncategories - 1
     arma::uvec ucats = arma::unique(data);
     for (int j=0; j<ncategories_; j++) {

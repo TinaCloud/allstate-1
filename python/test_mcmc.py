@@ -100,6 +100,9 @@ def zprob_slow(categories, zvalues, idx, alpha, zalpha, nclusters):
 
     return zprob
 
+print zprob(categories, zvalues, 12, alpha0, 1.0, K)
+print zprob_slow(categories, zvalues, 12, alpha0, 1.0, K)
+exit()
 
 # find most probable cluster
 # nclusters = 3

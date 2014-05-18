@@ -139,6 +139,7 @@ double TransitionPopulation::LogDensity(double log_gamma)
     logdensity += nclusters * (lgamma(gamma_sum) - lgamma(gamma));
     double log_tprob_sum = 0.0;
     for (int k=0; k<nclusters; k++) {
+        assert(transition_matrices_[k]->cluster_id == k);
         log_tprob_sum += log(transition_matrices_[k]->Value()(row_idx, col_idx));
     }
     logdensity += (gamma - 1.0) * log_tprob_sum;

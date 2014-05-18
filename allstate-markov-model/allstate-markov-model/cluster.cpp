@@ -164,9 +164,17 @@ void ClusterLabels::AddUnboundedContribution(arma::vec& log_zprob, arma::uvec& z
 }
 
 // add in the contribution to the conditional log-posterior from the markov chain data. this is done in-place.
-void ClusterLabels::AddMarkovContribution(arma::vec& log_zprob)
+void ClusterLabels::AddMarkovContribution(arma::vec& log_zprob, int data_id)
 {
-    
+    std::vector<int> this_chain = transition_matrices_[0]->GetData()[data_id];
+    for (int k=0; k<nclusters; k++) {
+        for (int t=1; t<this_chain.size(); t++) {
+            int row = this_chain[t-1];
+            int col = this_chain[t];
+            assert(transition_matrices_[k]->cluster_id == k);
+            log_zprob(k) += log(transition_matrices_[k]->Value()(row,col));
+        }
+    }
 }
 
 arma::uvec ClusterLabels::RandomPosterior()
@@ -194,6 +202,7 @@ arma::uvec ClusterLabels::RandomPosterior()
         AddUnboundedContribution(log_zprob, zvalues, i);
         
         // TODO: add in contribution from Markov chains for each cluster
+        AddMarkovContribution(log_zprob, i);
         
         // now sample new value of cluster label from categorical distribution
         arma::vec zprob = arma::exp(log_zprob) / arma::sum(arma::exp(log_zprob));

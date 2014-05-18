@@ -55,7 +55,7 @@ public:
     void AddUnboundedContribution(arma::vec& log_zprob, arma::uvec& zvalues, int i);
     
     // add in the contribution to the conditional log-posterior from the Markov chain data
-    void AddMarkovContribution(arma::vec& log_zprob);
+    void AddMarkovContribution(arma::vec& log_zprob, int data_id);
     
     // set and return the starting value
     arma::uvec StartingValue();
@@ -96,6 +96,7 @@ public:
     std::vector<std::shared_ptr<CategoricalPop> > GetCategoricals() { return categoricals_; }
     std::vector<std::shared_ptr<BoundedCountsPop> > GetBoundedCounts() { return bounded_counts_; }
     std::vector<std::shared_ptr<UnboundedCountsPop> > GetUnboundedCounts() { return unbounded_counts_; }
+    std::vector<std::shared_ptr<TransitionProbability> > GetTransitionMatrices() { return transition_matrices_; }
     
     
     // recalculate the cluster and category counts after removing the indexed cluster label

@@ -52,6 +52,8 @@ public:
     
     std::shared_ptr<ClusterLabels> GetClusterLabels() { return cluster_labels_; }
     std::shared_ptr<TransitionPopulation> GetPopulationPtr(int row_idx, int col_idx);
+    
+    std::vector<std::vector<int> > GetData() { return data_; }
 };
 
 /*

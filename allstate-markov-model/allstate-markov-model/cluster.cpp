@@ -19,10 +19,11 @@ double lbeta(double x, double y) {
     return lbeta;
 }
 
-ClusterLabels::ClusterLabels(bool track, std::string label, int n, int K, double concentration,
-                             double temperature) : Parameter<arma::uvec>(track, label, temperature), ndata(n),
+ClusterLabels::ClusterLabels(bool track, std::string label, int K, std::vector<std::vector<int> >& mchain, double concentration,
+                             double temperature) : Parameter<arma::uvec>(track, label, temperature), markov_chain_(mchain),
                                 nclusters(K), prior_concentration(concentration)
 {
+    ndata = mchain.size();
     value_.set_size(ndata);
     cluster_counts_.set_size(nclusters);
 }
@@ -166,12 +167,10 @@ void ClusterLabels::AddUnboundedContribution(arma::vec& log_zprob, arma::uvec& z
 // add in the contribution to the conditional log-posterior from the markov chain data. this is done in-place.
 void ClusterLabels::AddMarkovContribution(arma::vec& log_zprob, int data_id)
 {
-    std::vector<int> this_chain = transition_matrices_[0]->GetData()[data_id];
     for (int k=0; k<nclusters; k++) {
-        for (int t=1; t<this_chain.size(); t++) {
-            int row = this_chain[t-1];
-            int col = this_chain[t];
-            assert(transition_matrices_[k]->cluster_id == k);
+        for (int t=1; t<markov_chain_[data_id].size(); t++) {
+            int row = markov_chain_[data_id][t-1];
+            int col = markov_chain_[data_id][t];
             log_zprob(k) += log(transition_matrices_[k]->Value()(row,col));
         }
     }
@@ -205,7 +204,10 @@ arma::uvec ClusterLabels::RandomPosterior()
         AddMarkovContribution(log_zprob, i);
         
         // now sample new value of cluster label from categorical distribution
-        arma::vec zprob = arma::exp(log_zprob) / arma::sum(arma::exp(log_zprob));
+        arma::vec zprob = arma::exp(log_zprob - log_zprob.max()) / arma::sum(arma::exp(log_zprob - log_zprob.max()));
+        if (!zprob.is_finite()) {
+            std::cerr << "Warning! Non-finite elements detected in zprob." << std::endl;
+        }
         std::vector<double> stl_zprob = arma::conv_to<std::vector<double> >::from(zprob);
         boost::random::discrete_distribution<> cat_dist(stl_zprob.begin(), stl_zprob.end());
         

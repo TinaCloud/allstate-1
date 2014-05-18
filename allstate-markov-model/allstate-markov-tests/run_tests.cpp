@@ -162,8 +162,9 @@ TEST_CASE("Test counting methods for cluster labels class.", "[cluster labels]")
     
     arma::uvec zlabels0 = generate_cluster_labels(ndata, pi);
     
-    std::shared_ptr<ClusterLabels> zlabels =
-    std::make_shared<ClusterLabels>(ClusterLabels(true, "Z", ndata, 5));
+    std::vector<std::vector<int> > dummy_chains(ndata);
+    
+    std::shared_ptr<ClusterLabels> zlabels = std::make_shared<ClusterLabels>(ClusterLabels(true, "Z", 5, dummy_chains));
     
     // first test counts the cluster labels
     zlabels->Save(zlabels0);
@@ -226,8 +227,10 @@ TEST_CASE("Test methods of bounded count object.", "[bounded counts]") {
 
     arma::uvec zlabels0 = generate_cluster_labels(ndata, pi);
     
+    std::vector<std::vector<int> > dummy_chains(ndata);
+
     std::shared_ptr<ClusterLabels> zlabels =
-        std::make_shared<ClusterLabels>(ClusterLabels(true, "Z", ndata, 5));
+        std::make_shared<ClusterLabels>(ClusterLabels(true, "Z", 5, dummy_chains));
     
     zlabels->Save(zlabels0);
     zlabels->CountClusters();
@@ -284,8 +287,9 @@ TEST_CASE("Test methods of unbounded counts object.", "[unbounded counts]") {
     }
     
     arma::uvec zlabels0 = generate_cluster_labels(ndata, pi);
-    
-    std::shared_ptr<ClusterLabels> zlabels = std::make_shared<ClusterLabels>(ClusterLabels(true, "Z", ndata, 5));
+    std::vector<std::vector<int> > dummy_chains(ndata);
+
+    std::shared_ptr<ClusterLabels> zlabels = std::make_shared<ClusterLabels>(ClusterLabels(true, "Z", 5, dummy_chains));
     
     zlabels->Save(zlabels0);
     zlabels->CountClusters();
@@ -343,8 +347,9 @@ TEST_CASE("Test methods of Categorical variables.", "[categorical]") {
     }
     
     arma::uvec zlabels0 = generate_cluster_labels(ndata, pi);
-    
-    std::shared_ptr<ClusterLabels> zlabels = std::make_shared<ClusterLabels>(ClusterLabels(true, "Z", ndata, 5));
+    std::vector<std::vector<int> > dummy_chains(ndata);
+
+    std::shared_ptr<ClusterLabels> zlabels = std::make_shared<ClusterLabels>(ClusterLabels(true, "Z", 5, dummy_chains));
     
     // first test counts the cluster labels
     zlabels->Save(zlabels0);
@@ -428,7 +433,7 @@ TEST_CASE("Test methods of TransitionProb object.", "[transition prob]") {
     TransitionProbability tprob_object(true, "Tprob", chains, nstates, cluster_id);
     
     // first make sure cluster labels pointer is correctly set
-    std::shared_ptr<ClusterLabels> p_labels = std::make_shared<ClusterLabels>(true, "Z", ndata, nclusters);
+    std::shared_ptr<ClusterLabels> p_labels = std::make_shared<ClusterLabels>(true, "Z", nclusters, chains);
     p_labels->Save(zlabels0);
     
     tprob_object.SetClusterLabels(p_labels);
@@ -575,7 +580,17 @@ TEST_CASE("Test methods of ClusterLabels class, sans the LogDensity methods.", "
     int ndata = 10000;
     int nclusters = 5;
     
-    ClusterLabels cluster(false, "Z", ndata, nclusters);
+    // generate some markov chain data since we need it for the constructor
+    int nstates = 4;
+    arma::mat Tprob0 = arma::randu<arma::mat>(nstates, nstates);
+    // row sums must be normalized to one
+    for (int r=0; r<nstates; r++) {
+        Tprob0.row(r) /= arma::sum(Tprob0.row(r));
+    }
+    
+    std::vector<std::vector<int> > chains = generate_markov_chain(ndata, Tprob0);
+    
+    ClusterLabels cluster(false, "Z", nclusters, chains);
     
     // first test the StartingValue method
     arma::uvec zlabels = cluster.StartingValue();
@@ -700,15 +715,6 @@ TEST_CASE("Test methods of ClusterLabels class, sans the LogDensity methods.", "
     REQUIRE(p_unbounded_counts[2] == ubcvar3);
     
     // markov transition matrices
-    int nstates = 4;
-    arma::mat Tprob0 = arma::randu<arma::mat>(nstates, nstates);
-    // row sums must be normalized to one
-    for (int r=0; r<nstates; r++) {
-        Tprob0.row(r) /= arma::sum(Tprob0.row(r));
-    }
-    
-    std::vector<std::vector<int> > chains = generate_markov_chain(ndata, Tprob0);
-    
     std::vector<std::shared_ptr<TransitionProbability> > p_Tmats;
     for (int k=0; k<nclusters; k++) {
         std::shared_ptr<TransitionProbability> p_Tmat = std::make_shared<TransitionProbability>(true, "T", chains, nstates, k);
@@ -731,8 +737,10 @@ TEST_CASE("Test conditional probabilities of ClusterLabels class.", "[cluster la
         pi[i] = pi0[i];
     }
     int nclusters = pi.size();
-    
-    ClusterLabels cluster(false, "Z", ndata, nclusters);
+
+    std::vector<std::vector<int> > dummy_chains(ndata);
+
+    ClusterLabels cluster(false, "Z", nclusters, dummy_chains);
     cluster.Save(generate_cluster_labels(ndata, pi));
     
     // categorical data
@@ -898,7 +906,7 @@ TEST_CASE("Test conditional probabilities of ClusterLabels class.", "[cluster la
     REQUIRE(nequal == nclusters);
     
     /*
-     *  now test contribution from bounded count objects
+     *  now test contribution from unbounded count objects
      */
     std::vector<std::shared_ptr<UnboundedCountsPop> > ubobjects = cluster.GetUnboundedCounts();
     
@@ -944,8 +952,12 @@ TEST_CASE("Test conditional probabilities of ClusterLabels class.", "[cluster la
 // run MCMC sampler with 2 bounded counts objects, 3 categorical objects, 4 clusters. see if we recover the correct proportions among the
 // clusters and the correct cluster-dependent markov transition matrices
 TEST_CASE("Test Sampler for 2 bounded counts objects, 3 clusters", "[bounded counts]") {
+    // MCMC parameters
+    int nsamples = 10;
+    int nburnin = 4;
+    int nthin = 1;
+    
     // generate the test data
-    // first generate the data
     int ndata = 10000;
     int nclusters = 4;
     int ncount_pars = 2;
@@ -954,6 +966,7 @@ TEST_CASE("Test Sampler for 2 bounded counts objects, 3 clusters", "[bounded cou
     
     arma::vec pi = arma::randu<arma::vec>(nclusters);
     pi /= arma::sum(pi);
+    pi = arma::sort(pi);
 
     // cluster labels
     arma::uvec zlabels = generate_cluster_labels(ndata, arma::conv_to<std::vector<double> >::from(pi));
@@ -965,6 +978,12 @@ TEST_CASE("Test Sampler for 2 bounded counts objects, 3 clusters", "[bounded cou
         arma::vec probs = arma::randu<arma::vec>(nclusters);
         counts.push_back(generate_bounded_counts(zlabels, probs, nmax[l]));
     }
+    
+    arma::umat counts_data(ndata, nmax.n_elem);
+    for (int l=0; l<nmax.n_elem; l++) {
+        counts_data.col(l) = counts[l];
+    }
+    counts_data.save("counts_data.txt", arma::raw_ascii);
     
     // categorical data
     std::vector<arma::uvec> categoricals;
@@ -997,7 +1016,7 @@ TEST_CASE("Test Sampler for 2 bounded counts objects, 3 clusters", "[bounded cou
     // instantiate the parameter objects
     
     // cluster labels first
-    std::shared_ptr<ClusterLabels> Cluster = std::make_shared<ClusterLabels>(true, "Z", ndata, nclusters);
+    std::shared_ptr<ClusterLabels> Cluster = std::make_shared<ClusterLabels>(true, "Z", nclusters, mchains);
     
     // now markov chain parameters
     std::vector<std::shared_ptr<TransitionProbability> > Tprobs;
@@ -1094,5 +1113,101 @@ TEST_CASE("Test Sampler for 2 bounded counts objects, 3 clusters", "[bounded cou
         Cluster->AddCategoricalPop(Cats[l]);
     }
     
+    /*
+     *  instantiate the Sampler objects and add the steps
+     */
+
+    Sampler MCMC(nsamples, nburnin, nthin);
+    
+    for (int l=0; l<Hyper.size(); l++) {
+        MCMC.AddStep(new GibbsStep<arma::vec>(*Hyper[l]));
+    }
+    
+    StudentProposal tProp(8.0, 1.0);
+    double ivar = 0.1 * 0.1;
+    double target_rate = 0.4;
+    for (int l=0; l<Gammas.size(); l++) {
+        MCMC.AddStep(new UniAdaptiveMetro(*Gammas[l], tProp, ivar, target_rate, nsamples));
+    }
+    
+    MCMC.AddStep(new GibbsStep<arma::uvec>(*Cluster));
+    
+    for (int k=0; k<nclusters; k++) {
+        MCMC.AddStep(new GibbsStep<arma::mat>(*Tprobs[k]));
+    }
+    
+    for (int l=0; l<ncount_pars; l++) {
+        MCMC.AddStep(new AdaptiveMetro(*Bcounts[l], tProp, ivar * arma::eye(2, 2), target_rate, nsamples));
+    }
+    for (int l=0; l<ncat_pars; l++) {
+        arma::mat icovar = ivar * arma::eye(Cats[l]->GetNcategories(), Cats[l]->GetNcategories());
+        MCMC.AddStep(new AdaptiveMetro(*Cats[l], tProp, icovar, target_rate, nsamples));
+    }
+    
+    // run the sampler
+    MCMC.Run();
+    
+    // grab the cluster label samples and see how the fraction compares to pi
+    pi = arma::sort(pi);
+    arma::running_stat_vec<arma::vec> pi_stats;
+    std::vector<arma::uvec> zsamples = Cluster->GetSamples();
+    
+    arma::umat zsamples0(nsamples, ndata);
+    arma::umat korder(nsamples, nclusters);
+    
+    for (int iter=0; iter<nsamples; iter++) {
+        zsamples0.row(iter) = zsamples[iter].t();
+        arma::vec sampled_pi = arma::zeros<arma::vec>(nclusters);
+        for (int i=0; i<ndata; i++) {
+            sampled_pi(zsamples[iter][i])++;
+        }
+        sampled_pi /= arma::sum(sampled_pi);
+        korder.row(iter) = arma::sort_index(sampled_pi).t();
+        sampled_pi = arma::sort(sampled_pi);
+        pi_stats(sampled_pi);
+    }
+
+    zsamples0.save("zsamples.txt", arma::raw_ascii);
+    
+    pi.print("true pi:");
+    pi_stats.mean().print("mean sampled pi:");
+    
+    for (int k=0; k<nclusters; k++) {
+        CHECK(approximately_equal(pi(k), pi_stats.mean()(k), 0.02, 0.025));
+    }
+    
+    // now compare the sampled transition matrices to the true values
+    
+    std::vector<arma::mat> Tmean;
+    for (int k=0; k<nclusters; k++) {
+        Tmean.push_back(arma::zeros<arma::mat>(nstates, nstates));
+    }
+    
+    arma::vec psamples(nsamples);
+    for (int iter=0; iter<nsamples; iter++) {
+        for (int k=0; k<nclusters; k++) {
+            Tmean[k] = Tmean[k] + Tprobs[korder(iter,k)]->GetSamples()[iter];
+            
+            if (k == 0) {
+                psamples(iter) = Tprobs[korder(iter,k)]->GetSamples()[iter](0,0);
+            }
+
+        }
+    }
+    
+    for (int k=0; k<nclusters; k++) {
+        Tmean[k] /= nsamples;
+        
+        std::cout << k << std::endl;
+        Tmean[k].print("Tmean");
+        Tmats[k].print("True");
+        
+        arma::mat Tdiff = arma::abs(Tmean[k] - Tmats[k]);
+        arma::mat rTdiff = Tdiff / Tmats[k];
+        bool test = Tdiff.max() < 0.03 || rTdiff.max() < 0.1;
+        CHECK(test);
+        
+    }
+    psamples.save("psamples.txt", arma::raw_ascii);
     
 }

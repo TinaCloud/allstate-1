@@ -33,12 +33,14 @@ class ClusterLabels : public Parameter<arma::uvec> {
     std::vector<std::shared_ptr<UnboundedCountsPop> > unbounded_counts_; // count parameter with no upper bound, one per cluster
     std::vector<std::shared_ptr<TransitionProbability> > transition_matrices_; // markov transition matrix parameter, one per cluster
     
+    std::vector<std::vector<int> >& markov_chain_;
+    
 public:
     int ndata;  // number of data points
     int nclusters;  // number of clusters
     double prior_concentration;  // the concentration parameter for the symmetric dirichlet prior on the cluster weights
 
-    ClusterLabels(bool track, std::string label, int ndata, int nclusters, double prior_concentration=1.0, double temperature=1.0);
+    ClusterLabels(bool track, std::string label, int nclusters, std::vector<std::vector<int> >& markov_chain, double prior_concentration=1.0, double temperature=1.0);
     
     arma::uvec RandomPosterior();
     

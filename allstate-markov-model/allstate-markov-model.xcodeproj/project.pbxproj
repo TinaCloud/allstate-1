@@ -26,7 +26,10 @@
 		DF764ECA1923D6B0005B07B0 /* categorical.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764EC81923D6B0005B07B0 /* categorical.cpp */; };
 		DF764ECD19240717005B07B0 /* bounded_counts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764ECB19240717005B07B0 /* bounded_counts.cpp */; };
 		DF764ED01924110D005B07B0 /* unbounded_counts.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DF764ECE1924110D005B07B0 /* unbounded_counts.cpp */; };
-		DFA3B92519255DE60089126D /* run_sampler.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DFA3B92419255DE60089126D /* run_sampler.cpp */; };
+		DFB2864819297CDC00004739 /* missing_data.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DFBEE35D19293CE80043A4DE /* missing_data.cpp */; };
+		DFB2864A19298BE100004739 /* input_output.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DFB2864919298BE100004739 /* input_output.cpp */; };
+		DFB2864C1929A0FA00004739 /* libboost_system.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = DF2F65381926966C00E1B709 /* libboost_system.dylib */; };
+		DFBEE35F19293CE80043A4DE /* missing_data.cpp in Sources */ = {isa = PBXBuildFile; fileRef = DFBEE35D19293CE80043A4DE /* missing_data.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -74,6 +77,10 @@
 		DF764ECE1924110D005B07B0 /* unbounded_counts.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = unbounded_counts.cpp; sourceTree = "<group>"; };
 		DF764ECF1924110D005B07B0 /* unbounded_counts.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = unbounded_counts.hpp; sourceTree = "<group>"; };
 		DFA3B92419255DE60089126D /* run_sampler.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = run_sampler.cpp; sourceTree = "<group>"; };
+		DFB2864919298BE100004739 /* input_output.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = input_output.cpp; sourceTree = "<group>"; };
+		DFB2864B19298C8C00004739 /* input_output.hpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.h; path = input_output.hpp; sourceTree = "<group>"; };
+		DFBEE35D19293CE80043A4DE /* missing_data.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; path = missing_data.cpp; sourceTree = "<group>"; };
+		DFBEE35E19293CE80043A4DE /* missing_data.hpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.h; path = missing_data.hpp; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -91,6 +98,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				DFB2864C1929A0FA00004739 /* libboost_system.dylib in Frameworks */,
 				DF69DCE41922F5AC0046FCD6 /* libyamcmcpp.dylib in Frameworks */,
 				DF69DCE21922F59C0046FCD6 /* libarmadillo.4.30.2.dylib in Frameworks */,
 			);
@@ -146,6 +154,10 @@
 				DF41C7A41925899900DD9128 /* markov_chain.hpp */,
 				DFA3B92419255DE60089126D /* run_sampler.cpp */,
 				DF2F65231926863100E1B709 /* run_sampler.hpp */,
+				DFBEE35D19293CE80043A4DE /* missing_data.cpp */,
+				DFBEE35E19293CE80043A4DE /* missing_data.hpp */,
+				DFB2864919298BE100004739 /* input_output.cpp */,
+				DFB2864B19298C8C00004739 /* input_output.hpp */,
 			);
 			path = "allstate-markov-model";
 			sourceTree = "<group>";
@@ -223,6 +235,7 @@
 				DF2F652B192688BF00E1B709 /* run_tests.cpp in Sources */,
 				DF2F6536192689C600E1B709 /* categorical.cpp in Sources */,
 				DF2F6534192689C000E1B709 /* unbounded_counts.cpp in Sources */,
+				DFB2864819297CDC00004739 /* missing_data.cpp in Sources */,
 				DF2F6533192689BC00E1B709 /* markov_chain.cpp in Sources */,
 				DF2F6535192689C300E1B709 /* bounded_counts.cpp in Sources */,
 			);
@@ -234,8 +247,9 @@
 			files = (
 				DF764EC71923D04B005B07B0 /* cluster.cpp in Sources */,
 				DF69DCD31922E9130046FCD6 /* main.cpp in Sources */,
-				DFA3B92519255DE60089126D /* run_sampler.cpp in Sources */,
+				DFB2864A19298BE100004739 /* input_output.cpp in Sources */,
 				DF41C7A51925899900DD9128 /* markov_chain.cpp in Sources */,
+				DFBEE35F19293CE80043A4DE /* missing_data.cpp in Sources */,
 				DF764ED01924110D005B07B0 /* unbounded_counts.cpp in Sources */,
 				DF764ECA1923D6B0005B07B0 /* categorical.cpp in Sources */,
 				DF764ECD19240717005B07B0 /* bounded_counts.cpp in Sources */,
@@ -363,7 +377,10 @@
 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
 					"${HOME}/include",
 				);
-				LIBRARY_SEARCH_PATHS = "${HOME}/lib";
+				LIBRARY_SEARCH_PATHS = (
+					"${HOME}/lib",
+					/Users/brandonkelly/lib,
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Debug;
@@ -378,7 +395,10 @@
 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
 					"${HOME}/include",
 				);
-				LIBRARY_SEARCH_PATHS = "${HOME}/lib";
+				LIBRARY_SEARCH_PATHS = (
+					"${HOME}/lib",
+					/Users/brandonkelly/lib,
+				);
 				PRODUCT_NAME = "$(TARGET_NAME)";
 			};
 			name = Release;
@@ -393,6 +413,7 @@
 				DF2F6530192688BF00E1B709 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 		DF69DCCA1922E9130046FCD6 /* Build configuration list for PBXProject "allstate-markov-model" */ = {
 			isa = XCConfigurationList;

@@ -26,6 +26,7 @@
 #include "unbounded_counts.hpp"
 #include "bounded_counts.hpp"
 #include "markov_chain.hpp"
+#include "missing_data.hpp"
 
 using boost::math::lgamma;
 
@@ -101,9 +102,14 @@ arma::uvec generate_categoricals(arma::uvec zlabels, arma::mat probs) {
     return categories;
 }
 
-std::vector<std::vector<int> > generate_markov_chain(int nchains, arma::mat Tprob) {
+std::vector<std::vector<int> > generate_markov_chain(int nchains, arma::mat Tprob, int length=0) {
     int nstates = Tprob.n_cols;
-    arma::uvec ntime = arma::randi<arma::uvec>(nchains, arma::distr_param(2, 7));
+    arma::uvec ntime(nchains);
+    if (length == 0) {
+        ntime = arma::randi<arma::uvec>(nchains, arma::distr_param(2, 7));
+    } else {
+        ntime.fill(length);
+    }
     
     std::vector<std::vector<double> > Tprob_std;
     for (int r=0; r<nstates; r++) {
@@ -120,6 +126,7 @@ std::vector<std::vector<int> > generate_markov_chain(int nchains, arma::mat Tpro
             int next_state =
                 boost::random::discrete_distribution<>
                 (Tprob_std[previous_state].begin(), Tprob_std[previous_state].end())(rng);
+            assert(next_state >= 0 && next_state <= nstates);
             chain_i[t] = next_state;
         }
         chains[i] = chain_i;
@@ -949,27 +956,149 @@ TEST_CASE("Test conditional probabilities of ClusterLabels class.", "[cluster la
     REQUIRE(nequal == nclusters);
 }
 
+TEST_CASE("Test methods of MarkovChain class.", "[markov chain]") {
+    
+    // generate the test data
+    int ndata = 1000;
+    int nclusters = 4;
+    int nstates = 20;
+    
+    arma::vec pi = arma::randu<arma::vec>(nclusters);
+    pi /= arma::sum(pi);
+    pi = arma::sort(pi);
+    
+    // cluster labels
+    arma::uvec zlabels = generate_cluster_labels(ndata, arma::conv_to<std::vector<double> >::from(pi));
+    
+    // bounded length of markov chains
+    arma::vec probs = arma::randu<arma::vec>(nclusters);
+    int nmax = 15;
+    arma::uvec ntime = generate_bounded_counts(zlabels, probs, nmax);
+
+    // markov chains
+    std::vector<arma::mat> Tmats;
+    for (int k=0; k<nclusters; k++) {
+        arma::mat Tmat_k = arma::randu<arma::mat>(nstates, nstates);
+        // row sums must be normalized to one
+        for (int r=0; r<nstates; r++) {
+            Tmat_k.row(r) /= arma::sum(Tmat_k.row(r));
+        }
+        Tmats.push_back(Tmat_k);
+    }
+    
+    std::vector<std::vector<int> > mchains;
+    for (int i=0; i<ndata; i++) {
+        mchains.push_back(generate_markov_chain(1, Tmats[zlabels(i)], ntime(i))[0]);
+    }
+    
+    // instantiate the parameter objects
+    std::shared_ptr<BoundedCountsPop> Bcounts = std::make_shared<BoundedCountsPop>(false, "bcounts", ntime, nmax);
+    
+    unsigned int test_idx = ndata / 4;
+    MarkovChain markov(true, "markov", mchains, ntime, test_idx);
+    
+    std::shared_ptr<ClusterLabels> Cluster = std::make_shared<ClusterLabels>(true, "Z", nclusters, mchains);
+    Cluster->Save(zlabels);
+    Cluster->CountClusters();
+    
+    std::vector<std::shared_ptr<TransitionProbability> > Tprobs;
+    for (int k=0; k<nclusters; k++) {
+        std::string pname("Tprob-");
+        pname += std::to_string(k);
+        Tprobs.push_back(std::make_shared<TransitionProbability>(true, pname, mchains, nstates, k));
+    }
+    
+    /*
+     *  connect the parameter objects
+     */
+    
+    // connect the transition matrices for each cluster
+    for (int k=0; k<nclusters; k++) {
+        Cluster->AddTransitionMatrix(Tprobs[k]);
+        Tprobs[k]->SetClusterLabels(Cluster);
+        Tprobs[k]->Save(Tmats[k]);
+    }
+    
+    Bcounts->SetClusterLabels(Cluster);
+    
+    markov.SetClusterLabels(Cluster);
+    markov.SetBoundedCountsPop(Bcounts);
+    markov.SetTransitionMatrix(Tprobs);
+    
+    REQUIRE(markov.nobserved == mchains[test_idx].size());
+    
+    // make sure we never exceed nmax when simulating the chains
+    unsigned int nsim = 10000;
+    unsigned int nviolated = 0;
+    for (int i=0; i<nsim; i++) {
+        std::vector<int> new_chain = markov.RandomPosterior();
+        if (new_chain.size() <= markov.nobserved || new_chain.size() > Bcounts->nmax) {
+            nviolated++;
+        }
+    }
+    REQUIRE(nviolated == 0);
+
+    // make sure saving the values changes the data
+    nviolated = 0;
+    nsim = 1000;
+    for (int i=0; i<nsim; i++) {
+        std::vector<int> new_chain = markov.RandomPosterior();
+        markov.Save(new_chain);
+        // make sure we updated the length of the chain
+        if (Bcounts->GetData()(test_idx) != new_chain.size()) {
+            nviolated++;
+        }
+        // make sure we updated the values of the chain
+        std::vector<int> tdata = Tprobs[nclusters-1]->GetData()[test_idx];
+        for (int t=0; t<new_chain.size(); t++) {
+            if (!approximately_equal(new_chain[t], tdata[t])) {
+                nviolated++;
+            }
+            if (!approximately_equal(new_chain[t], mchains[test_idx][t])) {
+                nviolated++;
+            }
+        }
+    }
+    REQUIRE(nviolated == 0);
+}
+
 // run MCMC sampler with 2 bounded counts objects, 3 categorical objects, 4 clusters. see if we recover the correct proportions among the
 // clusters and the correct cluster-dependent markov transition matrices
-TEST_CASE("Test Sampler for 2 bounded counts objects, 3 clusters", "[bounded counts]") {
-    // MCMC parameters
+TEST_CASE("Test Sampler for 2 bounded counts objects, 3 categoricals, 4 clusters.", "[bounded counts][hide]") {
+
     int nsamples = 10;
-    int nburnin = 4;
+    int nburnin = 5;
     int nthin = 1;
     
     // generate the test data
-    int ndata = 10000;
+    int ndata = 1000;
     int nclusters = 4;
+    int nstates = 20;
     int ncount_pars = 2;
     int ncat_pars = 3;
-    int nstates = 4;
-    
+
     arma::vec pi = arma::randu<arma::vec>(nclusters);
     pi /= arma::sum(pi);
     pi = arma::sort(pi);
 
     // cluster labels
     arma::uvec zlabels = generate_cluster_labels(ndata, arma::conv_to<std::vector<double> >::from(pi));
+    
+    // markov chains
+    std::vector<arma::mat> Tmats;
+    for (int k=0; k<nclusters; k++) {
+        arma::mat Tmat_k = arma::randu<arma::mat>(nstates, nstates);
+        // row sums must be normalized to one
+        for (int r=0; r<nstates; r++) {
+            Tmat_k.row(r) /= arma::sum(Tmat_k.row(r));
+        }
+        Tmats.push_back(Tmat_k);
+    }
+    
+    std::vector<std::vector<int> > mchains;
+    for (int i=0; i<ndata; i++) {
+        mchains.push_back(generate_markov_chain(1, Tmats[zlabels(i)])[0]);
+    }
     
     // bounded count data
     std::vector<arma::uvec> counts;
@@ -997,23 +1126,7 @@ TEST_CASE("Test Sampler for 2 bounded counts objects, 3 clusters", "[bounded cou
         categoricals.push_back(generate_categoricals(zlabels, probs));
     }
 
-    // markov chains
-    std::vector<arma::mat> Tmats;
-    for (int k=0; k<nclusters; k++) {
-        arma::mat Tmat_k = arma::randu<arma::mat>(nstates, nstates);
-        // row sums must be normalized to one
-        for (int r=0; r<nstates; r++) {
-            Tmat_k.row(r) /= arma::sum(Tmat_k.row(r));
-        }
-        Tmats.push_back(Tmat_k);
-    }
-    
-    std::vector<std::vector<int> > mchains;
-    for (int i=0; i<ndata; i++) {
-        mchains.push_back(generate_markov_chain(1, Tmats[zlabels(i)])[0]);
-    }
-    
-    // instantiate the parameter objects
+    // make the parameter objects
     
     // cluster labels first
     std::shared_ptr<ClusterLabels> Cluster = std::make_shared<ClusterLabels>(true, "Z", nclusters, mchains);
@@ -1062,55 +1175,6 @@ TEST_CASE("Test Sampler for 2 bounded counts objects, 3 clusters", "[bounded cou
         std::string pname("categorical-");
         pname += std::to_string(l);
         Cats.push_back(std::make_shared<CategoricalPop>(false, pname, categoricals[l]));
-    }
-    
-    /*
-     *  connect the parameter objects
-     */
-    
-    // connect the transition matrices for each cluster
-    for (int k=0; k<nclusters; k++) {
-        Cluster->AddTransitionMatrix(Tprobs[k]);
-        Tprobs[k]->SetClusterLabels(Cluster);
-        for (int l=0; l<Gammas.size(); l++) {
-            Tprobs[k]->AddPopulationPtr(Gammas[l]);
-            Gammas[l]->AddTransitionMatrix(Tprobs[k]);
-        }
-    }
-    
-    // connect the gammas
-    for (int l=0; l<Gammas.size(); l++) {
-        int row = Gammas[l]->row_idx;
-        for (int m=0; m<Gammas.size(); m++) {
-            if (Gammas[m]->row_idx == row && m != l) {
-                Gammas[l]->AddGamma(Gammas[m]);
-            }
-        }
-    }
-    
-    // connect the gammas and their prior
-    for (int l=0; l<Gammas.size(); l++) {
-        int row = Gammas[l]->row_idx;
-        int col = Gammas[l]->col_idx;
-        if (row == col) {
-            // give gammas along the diagonal their own prior
-            Hyper.back()->AddTransitionPop(Gammas[l]);
-            Gammas[l]->SetHyperPrior(Hyper.back());
-        } else {
-            // give all gammas along this column their own prior
-            Hyper[col]->AddTransitionPop(Gammas[l]);
-            Gammas[l]->SetHyperPrior(Hyper[col]);
-        }
-    }
-    
-    // connect the bounded count and categoricals
-    for (int l=0; l<ncount_pars; l++) {
-        Bcounts[l]->SetClusterLabels(Cluster);
-        Cluster->AddBoundedCountsPop(Bcounts[l]);
-    }
-    for (int l=0; l<ncat_pars; l++) {
-        Cats[l]->SetClusterLabels(Cluster);
-        Cluster->AddCategoricalPop(Cats[l]);
     }
     
     /*

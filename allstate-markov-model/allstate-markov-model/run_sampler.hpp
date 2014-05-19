@@ -19,15 +19,11 @@
 #include "bounded_counts.hpp"
 #include "unbounded_counts.hpp"
 #include "markov_chain.hpp"
+#include "missing_data.hpp"
 
 
-Sampler build_sampler(std::vector<std::vector<int> > categorical_predictors, std::vector<std::vector<int> > bounded_counts,
-                      std::vector<std::vector<int> > unbounded_counts, std::vector<std::vector<int> > markov_chain,
-                      std::vector<unsigned int> test_set, unsigned int nclusters);
-
-void run_sampler(std::vector<std::vector<int> > categorical_predictors, std::vector<std::vector<int> > bounded_counts,
-                 std::vector<std::vector<int> > unbounded_counts, std::vector<std::vector<int> > markov_chain,
-                 std::vector<unsigned int> test_set, unsigned int nclusters, unsigned int niter, unsigned int nburn);
-
+Sampler build_sampler(std::vector<std::vector<int> >& categorical_predictors, std::vector<std::vector<int> >& bounded_counts,
+                      std::vector<std::vector<int> >& markov_chain, std::vector<unsigned int>& test_set, int nstates,
+                      unsigned int nclusters, int nsamples, int nburnin, int nthin);
 
 #endif

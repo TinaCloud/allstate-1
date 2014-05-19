@@ -15,7 +15,7 @@
 
 int get_file_lines(std::string& filename);
 
-void read_data(std::string& filename, std::vector<std::vector<int> >& data, int nrows, int ncols);
+void read_data(std::string& filename, std::vector<std::vector<unsigned int> >& data, int nrows, int ncols);
 
 void read_markov_data(std::string& mfilename, std::string& tfilename, std::vector<std::vector<int> >& data, int nrows);
 

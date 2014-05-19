@@ -20,7 +20,7 @@ class ClusterLabels;
 
 class BoundedCountsPop : public Parameter<arma::vec> {
     arma::uvec& data_; // the observed counts, a vector with ndata elements containing values 0, ..., nmax.
-    std::shared_ptr<ClusterLabels> cluster_labels_; // labels specifying which cluster each data point belongs to
+    std::shared_ptr<ClusterLabels>& cluster_labels_; // labels specifying which cluster each data point belongs to
     
 public:
     double prior_shape; // shape parameter for gamma prior
@@ -35,7 +35,7 @@ public:
 
     arma::vec StartingValue();
     
-    void SetClusterLabels(std::shared_ptr<ClusterLabels> labels) {
+    void SetClusterLabels(std::shared_ptr<ClusterLabels>& labels) {
         cluster_labels_ = labels;
     }
     

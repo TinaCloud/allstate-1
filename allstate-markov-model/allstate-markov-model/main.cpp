@@ -25,13 +25,13 @@ int main(int argc, const char * argv[])
     int nstates = 2303;
     int ndata = ntest + ntrain;
     // load the data
-    std::vector<std::vector<int> > counts;
+    std::vector<std::vector<unsigned int> > counts;
     int ncount_vars = 6;
     std::string count_fname = "counts_data.dat";
     read_data(count_fname, counts, ndata, ncount_vars);
     
-    std::vector<std::vector<int> > categoricals;
-    int ncat_vars = 5;
+    std::vector<std::vector<unsigned int> > categoricals;
+    int ncat_vars = 4;
     std::string cat_fname = "cat_data.dat";
     read_data(cat_fname, categoricals, ndata, ncat_vars);
     
@@ -40,12 +40,24 @@ int main(int argc, const char * argv[])
     std::string lfname = "chain_lengths.dat";
     read_markov_data(mfname, lfname, chains, ndata);
     
+    int nminus = 0;
+    for (int i=0; i<chains.size(); i++) {
+        for (int t=0; t<chains[i].size(); t++) {
+            if (chains[i][t] < 0) {
+                nminus++;
+            }
+        }
+    }
+    assert(nminus == 0);
+    
     std::vector<unsigned int> test_set(ntest);
     for (int i=0; i<ntest; i++) {
         test_set[i] = i + ntrain;
     }
     
     // instantiate the parameter objects
+    
+    std::cout << "Instantiating the objects..." << std::endl;
     
     // cluster labels first
     std::shared_ptr<ClusterLabels> Cluster = std::make_shared<ClusterLabels>(true, "Z", nclusters, chains);
@@ -58,14 +70,15 @@ int main(int argc, const char * argv[])
         Tprobs.push_back(std::make_shared<TransitionProbability>(false, pname, chains, nstates, k));
     }
     
-    std::vector<std::shared_ptr<TransitionPopulation> > Gammas;
+    std::vector<std::vector<std::shared_ptr<TransitionPopulation> > > Gammas(nstates);
     for (int r=0; r<nstates; r++) {
+        Gammas[r].resize(nstates);
         for (int c=0; c<nstates; c++) {
             std::string pname("gamma-");
             pname += std::to_string(r);
             pname += "-";
             pname += std::to_string(c);
-            Gammas.push_back(std::make_shared<TransitionPopulation>(false, pname, r, c));
+            Gammas[r][c] = std::make_shared<TransitionPopulation>(false, pname, r, c);
         }
     }
     
@@ -82,27 +95,33 @@ int main(int argc, const char * argv[])
     
     // bounded counts objects
     std::vector<std::shared_ptr<BoundedCountsPop> > Bcounts;
-    for (int l=0; l<counts.size(); l++) {
+    for (int l=0; l<ncount_vars; l++) {
         std::string pname("bcounts-");
         pname += std::to_string(l);
         unsigned int nmax = 0;
-        for (int i=0; i<counts[l].size(); l++) {
-            if (counts[l][i] > nmax) {
-                nmax = counts[l][i];
+        for (int i=0; i<ndata; i++) {
+            if (counts[i][l] > nmax) {
+                nmax = counts[i][l];
             }
         }
-        arma::uvec arma_counts;
-        arma_counts = arma::conv_to<arma::uvec>::from(counts[l]);
+        arma::uvec arma_counts(ndata);
+        for (int i=0; i<ndata; i++) {
+            arma_counts(i) = counts[i][l];
+        }
         Bcounts.push_back(std::make_shared<BoundedCountsPop>(false, pname, arma_counts, nmax));
     }
     
     // categorical objects
     std::vector<std::shared_ptr<CategoricalPop> > Cats;
-    for (int l=0; l<categoricals.size(); l++) {
+    for (int l=0; l<ncat_vars; l++) {
+        std::cout << l << std::endl;
         std::string pname("categorical-");
         pname += std::to_string(l);
-        arma::uvec arma_cats;
-        arma_cats = arma::conv_to<arma::uvec>::from(categoricals[l]);
+        arma::uvec arma_cats(ndata);
+        for (int i=0; i<ndata; i++) {
+            arma_cats(i) = categoricals[i][l];
+        }
+        // arma_cats.print(pname);
         Cats.push_back(std::make_shared<CategoricalPop>(false, pname, arma_cats));
     }
     
@@ -124,46 +143,63 @@ int main(int argc, const char * argv[])
      *  connect the parameter objects
      */
     
+    std::cout << "Connecting the objects..." << std::endl;
+    
+    std::cout << "Connecting the markov chains..." << std::endl;
+
     for (int i=0; i<Mchains.size(); i++) {
         Mchains[i]->SetClusterLabels(Cluster);
         Mchains[i]->SetBoundedCountsPop(Bcounts.back());
         Mchains[i]->SetTransitionMatrix(Tprobs);
     }
     
+    std::cout << "Connecting the Transition Matrices..." << std::endl;
+    
     // connect the transition matrices for each cluster
     for (int k=0; k<nclusters; k++) {
         Cluster->AddTransitionMatrix(Tprobs[k]);
         Tprobs[k]->SetClusterLabels(Cluster);
-        for (int l=0; l<Gammas.size(); l++) {
-            Tprobs[k]->AddPopulationPtr(Gammas[l]);
-            Gammas[l]->AddTransitionMatrix(Tprobs[k]);
+        for (int r=0; r<nstates; r++) {
+            for (int c=0; c<nstates; c++) {
+                Tprobs[k]->AddPopulationPtr(Gammas[r][c]);
+                Gammas[r][c]->AddTransitionMatrix(Tprobs[k]);
+            }
         }
     }
-    
-    // connect the gammas
-    for (int l=0; l<Gammas.size(); l++) {
-        int row = Gammas[l]->row_idx;
-        for (int m=0; m<Gammas.size(); m++) {
-            if (Gammas[m]->row_idx == row && m != l) {
-                Gammas[l]->AddGamma(Gammas[m]);
+
+    std::cout << "Connecting the Gammas..." << std::endl;
+
+    // connect the gammas for this row
+    for (int r=0; r<nstates; r++) {
+        std::cout << r << std::endl;
+        for (int c=0; c<nstates; c++) {
+            for (int c2=0; c2<nstates; c2++) {
+                if (Gammas[r][c]->col_idx != c2) {
+                    Gammas[r][c]->AddGamma(Gammas[r][c2]);
+                }
             }
         }
     }
     
+    std::cout << "Connecting the Gammas to their prior..." << std::endl;
+
     // connect the gammas and their prior
-    for (int l=0; l<Gammas.size(); l++) {
-        int row = Gammas[l]->row_idx;
-        int col = Gammas[l]->col_idx;
-        if (row == col) {
-            // give gammas along the diagonal their own prior
-            Hyper.back()->AddTransitionPop(Gammas[l]);
-            Gammas[l]->SetHyperPrior(Hyper.back());
-        } else {
-            // give all gammas along this column their own prior
-            Hyper[col]->AddTransitionPop(Gammas[l]);
-            Gammas[l]->SetHyperPrior(Hyper[col]);
+    for (int r=0; r<nstates; r++) {
+        for (int c=0; c<nstates; c++) {
+            if (r == c) {
+                // give gammas along the diagonal their own prior
+                Hyper.back()->AddTransitionPop(Gammas[r][c]);
+                Gammas[r][c]->SetHyperPrior(Hyper.back());
+            } else {
+                // give all gammas along this column their own prior
+                Hyper[c]->AddTransitionPop(Gammas[r][c]);
+                Gammas[r][c]->SetHyperPrior(Hyper[c]);
+            }
         }
+
     }
+    
+    std::cout << "Connecting the categorical and count parameters..." << std::endl;
     
     // connect the bounded count and categoricals
     for (int l=0; l<Bcounts.size(); l++) {
@@ -178,6 +214,8 @@ int main(int argc, const char * argv[])
     /*
      *  instantiate the Sampler objects and add the steps
      */
+
+    std::cout << "Building the Sampler..." << std::endl;
     
     Sampler MCMC(niter, nburnin, nthin);
     
@@ -188,8 +226,10 @@ int main(int argc, const char * argv[])
     StudentProposal tProp(8.0, 1.0);
     double ivar = 0.1 * 0.1;
     double target_rate = 0.4;
-    for (int l=0; l<Gammas.size(); l++) {
-        MCMC.AddStep(new UniAdaptiveMetro(*Gammas[l], tProp, ivar, target_rate, nburnin + niter - 1));
+    for (int r=0; r<nstates; r++) {
+        for (int c=0; c<nstates; c++) {
+            MCMC.AddStep(new UniAdaptiveMetro(*Gammas[r][c], tProp, ivar, target_rate, nburnin + niter - 1));
+        }
     }
     
     MCMC.AddStep(new GibbsStep<arma::uvec>(*Cluster));
@@ -210,6 +250,8 @@ int main(int argc, const char * argv[])
         MCMC.AddStep(new GibbsStep<std::vector<int> >(*Mchains[i]));
     }
 
+    std::cout << "Sampling..." << std::endl;
+    
     MCMC.Run();
 }
 

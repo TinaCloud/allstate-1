@@ -35,6 +35,7 @@ CategoricalPop::CategoricalPop(bool track, std::string label, arma::uvec& data, 
     value_.zeros();
     // make sure categories have values j = 0, 2, ..., ncategories - 1
     arma::uvec ucats = arma::unique(data);
+    ucats.print("ucats:");
     for (int j=0; j<ncategories_; j++) {
         assert(ucats(j) == j);
     }

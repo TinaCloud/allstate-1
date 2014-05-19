@@ -27,7 +27,7 @@ class CategoricalPop : public Parameter<arma::vec>
 {
     int ncategories_; // the number of unique observed categories, assumes category labels are 1, 2, ..., ncategories
     arma::uvec& data_; // the observed categories, a vector with ndata elements containing ncategories possible values
-    std::shared_ptr<ClusterLabels> cluster_labels_; // labels specifying which cluster each data point belongs to
+    std::shared_ptr<ClusterLabels>& cluster_labels_; // labels specifying which cluster each data point belongs to
     int idx_; // the index in the stack of categoricals in cluster_labels_
     
 public:
@@ -42,7 +42,7 @@ public:
     
     arma::vec StartingValue();
     
-    void SetClusterLabels(std::shared_ptr<ClusterLabels> labels) {
+    void SetClusterLabels(std::shared_ptr<ClusterLabels>& labels) {
         cluster_labels_ = labels;
     }
     

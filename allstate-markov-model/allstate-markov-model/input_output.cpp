@@ -28,11 +28,11 @@ int get_file_lines(std::string& filename) {
 }
 
 // read in the data
-void read_data(std::string& filename, std::vector<std::vector<int> >& data, int nrows, int ncols) {
+void read_data(std::string& filename, std::vector<std::vector<unsigned int> >& data, int nrows, int ncols) {
 	std::ifstream input_file(filename.c_str());
     data.resize(nrows);
 	for (int i = 0; i < nrows; ++i) {
-		std::vector<int> this_data(ncols);
+		std::vector<unsigned int> this_data(ncols);
 		for (int j = 0; j < ncols; ++j) {
 			input_file >> this_data[j];
 		}
